@@ -11,9 +11,11 @@ OptiData = csvread('Mar312015Sample01_2d.csv'); %time, x, y, theta
 
 %% filter and turn into xddot, yddot, thetadot
 [b, a] = butter(1, 0.2);
+
 times = OptiData(:, 1);
 x_filt = filtfilt(b, a, OptiData(:, 2));
-y_filt = filtfilt(b, a, OptiData(:, 3)) - OptiData(end, 3);
+y_filt = filtfilt(b, a, OptiData(:, 3));
+y_filt = y_filt - y_filt(end);
 theta_filt = filtfilt(b, a, OptiData(:, 4))*pi/180;
 dt = diff(times);
 xdot = diff(x_filt) ./ dt(1:end);
@@ -46,7 +48,6 @@ for i=25:77
 end
 G = -mean(G);
 Gdir = mean(Gdir) + pi;
-Rot = rotx(Gdir);
 Rot = [cos(Gdir), -sin(Gdir), 0; sin(Gdir), cos(Gdir), 0; 0, 0, 0];
 for i = 1:length(x_filt)
     State = Rot*[x_filt(i); y_filt(i); 0];
@@ -99,7 +100,8 @@ prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
 prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
 prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
 
-prog = addStateConstraint(prog,ConstantConstraint(x0),1);
+
+prog = addStateConstraint(prog, ConstantConstraint(x0),1);
 
 traj_init.x = PPTrajectory(foh([0, tf/N],[x0,x0]));
 [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
@@ -122,36 +124,31 @@ for i=2:N %length(scale_sequence)
     for j = 2:i
         uIMU = [0; 0; 0];
         for k = inds(j-1)+1:inds(j)
-           dt = times(k) - times(k-1);
-%            if j > 8
-%                uIMU(2) = uIMU(2) + 0;
-%                uIMU(1) = uIMU(1) + 0;
-%            else
-               uIMU(1) = uIMU(1) + dt*round(xddot(k), 2);
-               uIMU(2) = uIMU(2) + dt*round(yddot(k), 2);
-%            end
+            dt = times(k) - times(k-1);
+            
+            uIMU(1) = uIMU(1) + dt*round(xddot(k), 2);
+            uIMU(2) = uIMU(2) + dt*round(yddot(k), 2);
+            
         end
-%         if j > 8
-%             uIMU(3) = 0;
-%         else
-            uIMU(3) = round(thetadot(inds(j)), 2);
-%         end
+        
+        uIMU(3) = round(thetadot(inds(j)), 2);
+        
         IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
         IMUerr_cost = FunctionHandleObjective(2,IMU_fun);
         prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
         
-%        uGT = [x_gt(j, 1); x_gt(j, 2); x_gt(j, 3)];
-%        GT_fun = @(x) GTcost(x, uGT);
-%        GTerr_cost = FunctionHandleObjective(1, GT_fun);
-%        prog = prog.addCost(GTerr_cost, {prog.x_inds(1:3, j)'});
+        %        uGT = [x_gt(j, 1); x_gt(j, 2); x_gt(j, 3)];
+        %        GT_fun = @(x) GTcost(x, uGT);
+        %        GTerr_cost = FunctionHandleObjective(1, GT_fun);
+        %        prog = prog.addCost(GTerr_cost, {prog.x_inds(1:3, j)'});
     end
     
     % initial conditions constraint
     traj_init.x = xtraj;
     traj_init.l = ltraj;
     
-    prog = addStateConstraint(prog,ConstantConstraint(x0),1);
-    
+%     prog = addStateConstraint(prog, ConstantConstraint(x0),1);
+
     tic
     [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
     toc
@@ -214,5 +211,5 @@ keyboard
 %         df = 2*(x-u)';
 %     end
 
-end 
+end
 
