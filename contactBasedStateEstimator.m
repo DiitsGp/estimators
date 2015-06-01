@@ -59,7 +59,7 @@ for i = 1:length(x_filt)
     Acc = Rot*[xddot(i); yddot(i); 0];
     xddot(i) = Acc(1);
     yddot(i) = Acc(2);
-    theta_filt(i) = theta_filt(i) + Gdir;
+%    theta_filt(i) = theta_filt(i) + Gdir;
 end
 
 %% setup
@@ -90,7 +90,6 @@ p = PlanarRigidBodyManipulator(urdf, options);
 p = p.setGravity([0; 0; G]);
 r = TimeSteppingRigidBodyManipulator(p, options.dt);
 
-options = struct();
 options.integration_method = ContactImplicitTrajectoryOptimization.MIXED;
 
 %% do trajectory optimization
@@ -99,7 +98,6 @@ prog = ContactImplicitTrajectoryOptimization(r.getManipulator,2,tf,options);
 prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
 prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
 prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
-
 
 prog = addStateConstraint(prog, ConstantConstraint(x0),1);
 
@@ -136,11 +134,6 @@ for i=2:N %length(scale_sequence)
         IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
         IMUerr_cost = FunctionHandleObjective(2,IMU_fun);
         prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
-        
-        %        uGT = [x_gt(j, 1); x_gt(j, 2); x_gt(j, 3)];
-        %        GT_fun = @(x) GTcost(x, uGT);
-        %        GTerr_cost = FunctionHandleObjective(1, GT_fun);
-        %        prog = prog.addCost(GTerr_cost, {prog.x_inds(1:3, j)'});
     end
     
     % initial conditions constraint
@@ -198,18 +191,14 @@ keyboard
 %% cost fun!
     function [f, df] = IMUcost(x, oldx, u)
         diffvel = [x(1)-oldx(1); x(2)-oldx(2); x(3)];
-        Q = [2, 0, 0; 0, 2, 0; 0, 0, 1]; % Q is a scaling matrix
+        Q = [8, 0, 0; 0, 7, 0; 0, 0, 1]; % Q is a scaling matrix
         f = (diffvel-u)'*Q*(diffvel-u);
         graddiffvel = [1, 0, 0, -1, 0, 0;...
             0, 1, 0, 0, -1, 0;...
             0, 0, 1, 0, 0, 0];
         df = 2*(diffvel-u)'*Q*graddiffvel;
     end
-
-%     function [f, df] = GTcost(x, u)
-%         f = (x-u)'*(x-u);
-%         df = 2*(x-u)';
-%     end
+    end
 
 end
 
