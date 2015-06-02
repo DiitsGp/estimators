@@ -83,14 +83,49 @@ x_err = zeros(N, 1);
 y_err = zeros(N, 1);
 theta_err = zeros(N, 1);
 
-x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); 0; 0; 0];
-
 urdf = fullfile('CBSE_Window.URDF');
+urdf = 'FallingBrick.urdf';
 p = PlanarRigidBodyManipulator(urdf, options);
 p = p.setGravity([0; 0; G]);
 r = TimeSteppingRigidBodyManipulator(p, options.dt);
 
 options.integration_method = ContactImplicitTrajectoryOptimization.MIXED;
+
+%% playback original data
+v = r.constructVisualizer;
+v.display_dt = 0.01;
+poses = zeros(6, length(inds));
+poses(1:3, :) = [x_filt(inds), y_filt(inds), theta_filt(inds)]';
+poses(2, :) = poses(2, :) + 0.05;
+dttimes = linspace(times(1), times(end), length(times(inds)));
+xtraj_constructed = DTTrajectory(dttimes, poses);
+xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
+v.playback(xtraj_constructed);
+
+%% noisy seed
+urdf = fullfile('CBSE_Window.URDF');
+p = PlanarRigidBodyManipulator(urdf, options);
+p = p.setGravity([0; 0; G]);
+r = TimeSteppingRigidBodyManipulator(p, options.dt);
+
+x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); xdot(1); ydot(1); thetadot(1)];
+
+x0min = Point(r.getStateFrame());
+x0max = Point(r.getStateFrame());
+
+bd = 0.2;
+x0min.base_x = x0(1);
+x0min.base_z = max(0, x0(2)-bd);
+x0min.base_relative_pitch = x0(3) - bd;
+x0min.base_xdot = x0(4)-bd;
+x0min.base_zdot = x0(5) - bd;
+x0min.base_relative_pitchdot = x0(6) - bd;
+x0max.base_x = x0(1);
+x0max.base_z = x0(2) + bd;
+x0max.base_relative_pitch = x0(3) + bd;
+x0max.base_xdot = x0(4) + bd;
+x0max.base_zdot = x0(5) + bd;
+x0max.base_relative_pitchdot = x0(6) + bd;
 
 %% do trajectory optimization
 %scale_sequence = [1;.001;0];
@@ -99,7 +134,8 @@ prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
 prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
 prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
 
-prog = addStateConstraint(prog, ConstantConstraint(x0),1);
+%prog = addStateConstraint(prog, ConstantConstraint(x0),1);
+prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
 
 traj_init.x = PPTrajectory(foh([0, tf/N],[x0,x0]));
 [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
@@ -121,31 +157,55 @@ for i=2:N %length(scale_sequence)
     
     for j = 2:i
         uIMU = [0; 0; 0];
+%         uTheta = [0];
         for k = inds(j-1)+1:inds(j)
             dt = times(k) - times(k-1);
             
             uIMU(1) = uIMU(1) + dt*round(xddot(k), 2);
             uIMU(2) = uIMU(2) + dt*round(yddot(k), 2);
-            
+
+%             uTheta = uTheta + dt*round(thetadot(k), 2);
         end
         
         uIMU(3) = round(thetadot(inds(j)), 2);
-        
+
         IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
         IMUerr_cost = FunctionHandleObjective(2,IMU_fun);
         prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
+        
+%         Theta_fun = @(x, oldx) Thetacost(x, oldx, uTheta);
+%         Theta_err_cost = FunctionHandleObjective(1, Theta_fun);
+%         prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
     end
     
     % initial conditions constraint
     traj_init.x = xtraj;
     traj_init.l = ltraj;
     
-%     prog = addStateConstraint(prog, ConstantConstraint(x0),1);
+%    prog = addStateConstraint(prog, ConstantConstraint(x0),1);
+%    prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
 
     tic
     [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
     toc
 end
+
+%% playback calculated trajectory
+urdf = 'FallingBrick.urdf';
+p = PlanarRigidBodyManipulator(urdf, options);
+p = p.setGravity([0; 0; G]);
+r = TimeSteppingRigidBodyManipulator(p, options.dt);
+v = r.constructVisualizer;
+v.display_dt = 0.01;
+v = r.constructVisualizer;
+v.display_dt = 0.01;
+traj = xtraj.eval(xtraj.getBreaks());
+poses = zeros(6, length(inds));
+traj(2, :) = traj(2, :)+0.05;
+poses(1:3, :) = [traj(1, :)', traj(2, :)', traj(3, :)']';
+xtraj_constructed = DTTrajectory(dttimes, poses);
+xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
+v.playback(xtraj_constructed, struct('slider', true));
 
 %% plot the final errors
 for i = 1:N
@@ -162,43 +222,48 @@ for i = 1:N
 end
 
 figure
-stem(times(inds), x_gt(:, 1));
-title('gt-x vs times');
+plot(times(inds), x_gt(:, 1), '+', times(inds), x_calc, '*');
+title('gt-x (+) and x-calc (*) vs times');
 
 figure
-stem(times(inds), x_gt(:, 2));
-title('gt-y vs times');
+plot(times(inds), x_gt(:, 2), '+', times(inds), y_calc, '*');
+title('gt-y (+) and y-calc (*) vs times');
 
 figure
-stem(times(inds), x_gt(:, 3));
-title('gt-theta vs times');
+plot(times(inds), x_gt(:, 3), '+', times(inds), theta_calc, '*');
+title('gt-theta (+) and theta-calc (*) vs times');
 
-figure
-stem(times(inds), x_calc);
-title('x-calc at knot points');
-
-figure
-stem(times(inds), y_calc);
-title('y-calc at knot points');
-
-figure
-stem(times(inds), theta_calc);
-title('theta-calc at knot points');
+% figure
+% stem(times(inds), x_calc, '*');
+% title('x-calc at knot points');
+% 
+% figure
+% stem(times(inds), y_calc);
+% title('y-calc at knot points');
+% 
+% figure
+% stem(times(inds), theta_calc);
+% title('theta-calc at knot points');
 
 drawnow;
-keyboard
+%keyboard;
 
 %% cost fun!
     function [f, df] = IMUcost(x, oldx, u)
-        diffvel = [x(1)-oldx(1); x(2)-oldx(2); x(3)];
-        Q = [8, 0, 0; 0, 7, 0; 0, 0, 1]; % Q is a scaling matrix
-        f = (diffvel-u)'*Q*(diffvel-u);
-        graddiffvel = [1, 0, 0, -1, 0, 0;...
+        costmat = [x(1)-oldx(1); x(2)-oldx(2); x(3)];
+        Q = [10/pi, 0, 0; 0, 10/pi, 0; 0, 0, 1]; % Q is a scaling matrix
+        f = (costmat-u)'*Q*(costmat-u);
+        gradcostmat = [1, 0, 0, -1, 0, 0;...
             0, 1, 0, 0, -1, 0;...
             0, 0, 1, 0, 0, 0];
-        df = 2*(diffvel-u)'*Q*graddiffvel;
+        df = 2*(costmat-u)'*Q*gradcostmat;
     end
-    end
+
+%     function [f, df] = Thetacost(x, oldx, u)
+%        costmat = [x-oldx];
+%        f = (costmat-u)^2;
+%        df = 2*(costmat-u)*[1, -1];
+%     end
 
 end
 
