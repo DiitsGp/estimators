@@ -25,7 +25,8 @@ yddot = diff(ydot) ./ dt(2:end);
 thetadot = diff(theta_filt) ./ dt;
 
 % because the samples are motionless in the beginning it's ok for me to
-% resize them here
+%   resize them here
+
 x_filt = x_filt(89:end);
 y_filt = y_filt(89:end);
 theta_filt = theta_filt(89:end);
@@ -36,6 +37,15 @@ thetadot = thetadot(88:end);
 
 xddot = xddot(87:end);
 yddot = yddot(87:end);
+
+% add white noise
+% I let the IMU sit on a table and measured the gravitational acceleration.
+%   Using a known value for g = -9.80665, I calculated the SNR of the IMU as
+%   50.7912. 
+SNR = getSNR() - 10;
+thetadot = awgn(thetadot, SNR);
+xddot = awgn(xddot, SNR);
+yddot = awgn(yddot, SNR);
 
 times = times(89:end);
 times = times - times(1);
@@ -68,11 +78,10 @@ options.floating = true;
 options.dt = 0.01;
 w = warning('off','Drake:RigidBodyManipulator:UnsupportedContactPoints');
 
-N = 15;
+N = 20;
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
 
-x_sensor = [xddot(inds), yddot(inds), thetadot(inds)];
 x_gt = [x_filt(inds), y_filt(inds), theta_filt(inds)];
 
 x_calc = zeros(N, 1);
@@ -151,20 +160,20 @@ for i=2:N %length(scale_sequence)
     prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
     prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
     prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
-    prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-2);
-    prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-2);
-    prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-2);
+    prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-4);
+    prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 5e-4);
+    prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-4);
     
     for j = 2:i
         uIMU = [0; 0; 0];
-%         uTheta = [0];
+        uTHETA = [0];
         for k = inds(j-1)+1:inds(j)
             dt = times(k) - times(k-1);
             
             uIMU(1) = uIMU(1) + dt*round(xddot(k), 2);
             uIMU(2) = uIMU(2) + dt*round(yddot(k), 2);
 
-%             uTheta = uTheta + dt*round(thetadot(k), 2);
+            uTHETA = uTHETA + dt*round(thetadot(k), 2);
         end
         
         uIMU(3) = round(thetadot(inds(j)), 2);
@@ -173,9 +182,9 @@ for i=2:N %length(scale_sequence)
         IMUerr_cost = FunctionHandleObjective(2,IMU_fun);
         prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
         
-%         Theta_fun = @(x, oldx) Thetacost(x, oldx, uTheta);
-%         Theta_err_cost = FunctionHandleObjective(1, Theta_fun);
-%         prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
+        Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
+        Theta_err_cost = FunctionHandleObjective(1, Theta_fun);
+        prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
     end
     
     % initial conditions constraint
@@ -183,7 +192,7 @@ for i=2:N %length(scale_sequence)
     traj_init.l = ltraj;
     
 %    prog = addStateConstraint(prog, ConstantConstraint(x0),1);
-%    prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
+    prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
 
     tic
     [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
@@ -233,18 +242,6 @@ figure
 plot(times(inds), x_gt(:, 3), '+', times(inds), theta_calc, '*');
 title('gt-theta (+) and theta-calc (*) vs times');
 
-% figure
-% stem(times(inds), x_calc, '*');
-% title('x-calc at knot points');
-% 
-% figure
-% stem(times(inds), y_calc);
-% title('y-calc at knot points');
-% 
-% figure
-% stem(times(inds), theta_calc);
-% title('theta-calc at knot points');
-
 drawnow;
 %keyboard;
 
@@ -259,11 +256,11 @@ drawnow;
         df = 2*(costmat-u)'*Q*gradcostmat;
     end
 
-%     function [f, df] = Thetacost(x, oldx, u)
-%        costmat = [x-oldx];
-%        f = (costmat-u)^2;
-%        df = 2*(costmat-u)*[1, -1];
-%     end
+    function [f, df] = THETAcost(x, oldx, u)
+       costmat = [x-oldx];
+       f = (costmat-u)^2;
+       df = 2*(costmat-u)*[1, -1];
+    end
 
 end
 
