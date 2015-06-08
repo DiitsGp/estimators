@@ -41,7 +41,7 @@ yddot = yddot(87:end);
 % add white noise
 % I let the IMU sit on a table and measured the gravitational acceleration.
 %   Using a known value for g = -9.80665, I calculated the SNR of the IMU as
-%   50.7912. 
+%   50.7912.
 SNR = getSNR() - 10;
 thetadot = awgn(thetadot, SNR);
 xddot = awgn(xddot, SNR);
@@ -69,19 +69,21 @@ for i = 1:length(x_filt)
     Acc = Rot*[xddot(i); yddot(i); 0];
     xddot(i) = Acc(1);
     yddot(i) = Acc(2);
-%    theta_filt(i) = theta_filt(i) + Gdir;
 end
 
 %% setup
 options.terrain = RigidBodyFlatTerrain();
 options.floating = true;
 options.dt = 0.01;
+options.selfCollisions = false;
+
 w = warning('off','Drake:RigidBodyManipulator:UnsupportedContactPoints');
 
-N = 20;
+N = 15;
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
 
+x_sensor = [xdot(inds), ydot(inds), thetadot(inds)];
 x_gt = [x_filt(inds), y_filt(inds), theta_filt(inds)];
 
 x_calc = zeros(N, 1);
@@ -137,66 +139,104 @@ x0max.base_zdot = x0(5) + bd;
 x0max.base_relative_pitchdot = x0(6) + bd;
 
 %% do trajectory optimization
-%scale_sequence = [1;.001;0];
-prog = ContactImplicitTrajectoryOptimization(r.getManipulator,2,tf,options);
-prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
-prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
-prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
+scale_sequence = [1; 0.5; 0.1; 0];
 
-%prog = addStateConstraint(prog, ConstantConstraint(x0),1);
-prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
-
-traj_init.x = PPTrajectory(foh([0, tf/N],[x0,x0]));
-[xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
-
-for i=2:N %length(scale_sequence)
-    %  scale = scale_sequence(i);
-    display(i);
-    options.compl_slack = 0.01;%scale*.01;
-    options.lincompl_slack = 0.001;%scale*.001;
-    options.jlcompl_slack = 0.01;%scale*.01;
+for scseq=1:length(scale_sequence)
+    num = scale_sequence(scseq);
+    display(num);
     
-    prog = ContactImplicitTrajectoryOptimization(r.getManipulator,i,tf,options);
+    prog = ContactImplicitTrajectoryOptimization(r.getManipulator,2,tf,options);
     prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
     prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
     prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
-    prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-4);
-    prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 5e-4);
-    prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-4);
     
-    for j = 2:i
-        uIMU = [0; 0; 0];
-        uTHETA = [0];
-        for k = inds(j-1)+1:inds(j)
-            dt = times(k) - times(k-1);
+    %prog = addStateConstraint(prog, ConstantConstraint(x0),1);
+    prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
+    
+    traj_init.x = PPTrajectory(foh([0, tf/N],[x0,x0]));
+    [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
+    
+    for i=2:N %length(scale_sequence)
+        scale = scale_sequence(scseq);
+        display(i);
+        options.compl_slack = scale*.01;
+        options.lincompl_slack = scale*.001;
+        options.jlcompl_slack = scale*.01;
+        
+        prog = ContactImplicitTrajectoryOptimization(r.getManipulator,i,tf,options);
+        prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
+        prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
+        prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
+        prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
+        prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 5e-4);
+        prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-4);
+        prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-4);
+        
+        for j = 2:i
+            uIMU = [0; 0; 0];
+            uTHETA = [0];
+            for k = inds(j-1)+1:inds(j)
+                dt = times(k) - times(k-1);
+                
+                uIMU(1) = uIMU(1) + dt*round(xddot(k), 2);
+                uIMU(2) = uIMU(2) + dt*round(yddot(k), 2);
+                
+                uTHETA = uTHETA + dt*round(thetadot(k), 2);
+            end
             
-            uIMU(1) = uIMU(1) + dt*round(xddot(k), 2);
-            uIMU(2) = uIMU(2) + dt*round(yddot(k), 2);
-
-            uTHETA = uTHETA + dt*round(thetadot(k), 2);
+            uIMU(3) = round(thetadot(inds(j)), 2);
+            
+            IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
+            IMUerr_cost = FunctionHandleObjective(2,IMU_fun);
+            prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
+            
+            Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
+            Theta_err_cost = FunctionHandleObjective(1, Theta_fun);
+            prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
         end
         
-        uIMU(3) = round(thetadot(inds(j)), 2);
-
-        IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
-        IMUerr_cost = FunctionHandleObjective(2,IMU_fun);
-        prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
+        % initial conditions constraint
+        traj_init.x = xtraj;
+        traj_init.l = ltraj;
         
-        Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
-        Theta_err_cost = FunctionHandleObjective(1, Theta_fun);
-        prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
+        %    prog = addStateConstraint(prog, ConstantConstraint(x0),1);
+        prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
+        
+        tic
+        [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
+        toc
     end
     
-    % initial conditions constraint
-    traj_init.x = xtraj;
-    traj_init.l = ltraj;
+    %% plot the final errors
+    for i = 1:N
+        t = times(inds(i));
+        xtrajloop = xtraj.eval(t);
+        
+        x_calc(i) = xtrajloop(1);
+        y_calc(i) = xtrajloop(2);
+        theta_calc(i) = xtrajloop(3);
+        xdot_calc(i) = xtrajloop(4);
+        ydot_calc(i) = xtrajloop(5);
+        
+        x_err(i) = (x_gt(i, 1) - x_calc(i))/x_gt(i, 1);
+        y_err(i) = (x_gt(i, 2) - y_calc(i))/x_gt(i, 2);
+        theta_err(i) = (x_gt(i, 3) - theta_calc(i))/x_gt(i, 3);
+    end
     
-%    prog = addStateConstraint(prog, ConstantConstraint(x0),1);
-    prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
-
-    tic
-    [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
-    toc
+    figure
+    plot(times(inds), x_sensor(:, 1), '+', times(inds), xdot_calc, '*');
+    title(['gt-xdot (+) and xdot-calc (*) vs times :: scale = ',num2str(num)]);
+    
+    figure
+    plot(times(inds), x_sensor(:, 2), '+', times(inds), ydot_calc, '*');
+    title(['gt-ydot (+) and ydot-calc (*) vs times :: scale = ',num2str(num)]);
+    
+    figure
+    plot(times(inds), x_gt(:, 3), '+', times(inds), theta_calc, '*');
+    title(['gt-theta (+) and theta-calc (*) vs times :: scale = ',num2str(num)]);
+    
+    drawnow;
+    
 end
 
 %% playback calculated trajectory
@@ -216,33 +256,7 @@ xtraj_constructed = DTTrajectory(dttimes, poses);
 xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
 v.playback(xtraj_constructed, struct('slider', true));
 
-%% plot the final errors
-for i = 1:N
-    t = times(inds(i));
-    xtrajfinal = xtraj.eval(t);
-    
-    x_calc(i) = xtrajfinal(1);
-    y_calc(i) = xtrajfinal(2);
-    theta_calc(i) = xtrajfinal(3);
-    
-    x_err(i) = (x_gt(i, 1) - x_calc(i))/x_gt(i, 1);
-    y_err(i) = (x_gt(i, 2) - y_calc(i))/x_gt(i, 2);
-    theta_err(i) = (x_gt(i, 3) - theta_calc(i))/x_gt(i, 3);
-end
 
-figure
-plot(times(inds), x_gt(:, 1), '+', times(inds), x_calc, '*');
-title('gt-x (+) and x-calc (*) vs times');
-
-figure
-plot(times(inds), x_gt(:, 2), '+', times(inds), y_calc, '*');
-title('gt-y (+) and y-calc (*) vs times');
-
-figure
-plot(times(inds), x_gt(:, 3), '+', times(inds), theta_calc, '*');
-title('gt-theta (+) and theta-calc (*) vs times');
-
-drawnow;
 %keyboard;
 
 %% cost fun!
@@ -257,10 +271,9 @@ drawnow;
     end
 
     function [f, df] = THETAcost(x, oldx, u)
-       costmat = [x-oldx];
-       f = (costmat-u)^2;
-       df = 2*(costmat-u)*[1, -1];
+        costmat = [x-oldx];
+        f = 2*(costmat-u)^2;
+        df = 2*2*(costmat-u)*[1, -1];
     end
 
 end
-
