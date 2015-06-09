@@ -4,7 +4,7 @@ function [r,xtraj,utraj,ltraj,z,F,info,prog] = contactBasedStateEstimator(xtraj,
 %   data otbained from an onboard IMU in a planar falling brick
 
 %% load data
-
+format long g;
 OptiData = csvread('Mar312015Sample01_2d.csv'); %time, x, y, theta
 %checkDependency('lcmgl');
 %lcmgl = drake.util.BotLCMGLClient(lcm.lcm.LCM.getSingleton(), 'FallingPlate');
@@ -83,7 +83,7 @@ N = 15;
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
 
-x_sensor = [xdot(inds), ydot(inds), thetadot(inds)];
+xdot_gt = [xdot(inds), ydot(inds), thetadot(inds)];
 x_gt = [x_filt(inds), y_filt(inds), theta_filt(inds)];
 
 x_calc = zeros(N, 1);
@@ -94,6 +94,8 @@ x_err = zeros(N, 1);
 y_err = zeros(N, 1);
 theta_err = zeros(N, 1);
 
+% should probably fix this at some point to work with CBSE_Window.URDF
+% FIXME
 urdf = fullfile('CBSE_Window.URDF');
 urdf = 'FallingBrick.urdf';
 p = PlanarRigidBodyManipulator(urdf, options);
@@ -121,22 +123,30 @@ r = TimeSteppingRigidBodyManipulator(p, options.dt);
 
 x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); xdot(1); ydot(1); thetadot(1)];
 
+x0rand = Point(r.getStateFrame());
 x0min = Point(r.getStateFrame());
 x0max = Point(r.getStateFrame());
 
-bd = 0.2;
+x0rand.base_x = x0(1);
+x0rand.base_z = max(0, x0(2)+0.4*(rand-0.5));
+x0rand.base_relative_pitch = x0(3)+0.4*(rand-0.5);
+x0rand.base_xdot = x0(4)+0.4*(rand-0.5);
+x0rand.base_zdot = x0(5)+0.4*(rand-0.5);
+x0rand.base_relative_pitchdot = x0(6)+0.4*(rand-0.5);
+
 x0min.base_x = x0(1);
-x0min.base_z = max(0, x0(2)-bd);
-x0min.base_relative_pitch = x0(3) - bd;
-x0min.base_xdot = x0(4)-bd;
-x0min.base_zdot = x0(5) - bd;
-x0min.base_relative_pitchdot = x0(6) - bd;
+x0min.base_z = 0;
+x0min.base_relative_pitch = -inf;
+x0min.base_xdot = -inf;
+x0min.base_zdot = -inf;
+x0min.base_relative_pitchdot = -inf;
+
 x0max.base_x = x0(1);
-x0max.base_z = x0(2) + bd;
-x0max.base_relative_pitch = x0(3) + bd;
-x0max.base_xdot = x0(4) + bd;
-x0max.base_zdot = x0(5) + bd;
-x0max.base_relative_pitchdot = x0(6) + bd;
+x0max.base_z = inf;
+x0max.base_relative_pitch = inf;
+x0max.base_xdot = inf;
+x0max.base_zdot = inf;
+x0max.base_relative_pitchdot = inf;
 
 %% do trajectory optimization
 scale_sequence = [1; 0.5; 0.1; 0];
@@ -145,32 +155,43 @@ for scseq=1:length(scale_sequence)
     num = scale_sequence(scseq);
     display(num);
     
-    prog = ContactImplicitTrajectoryOptimization(r.getManipulator,2,tf,options);
+    prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
     prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
     prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
     prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
-    
-    %prog = addStateConstraint(prog, ConstantConstraint(x0),1);
+
+%     optional course of action
+%     prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
+%     traj_init.x = PPTrajectory(f0h([0, tf/N], [double(x0rand), double(x0rand)]));
+%     [xtraj, utraj, ltraj, ~, z, F, info] = solveTraj(prog, tf, traj_init);
+
     prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
-    
-    traj_init.x = PPTrajectory(foh([0, tf/N],[x0,x0]));
+
+    if (scseq == 1)
+        traj_init.x = PPTrajectory(foh([0, tf/N],[double(x0rand),double(x0rand)]));
+    else
+        traj_init.x = xtraj;
+        traj_init.l = ltraj;
+    end
     [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
     
-    for i=2:N %length(scale_sequence)
+    for i=2:N
         scale = scale_sequence(scseq);
         display(i);
         options.compl_slack = scale*.01;
         options.lincompl_slack = scale*.001;
         options.jlcompl_slack = scale*.01;
         
-        prog = ContactImplicitTrajectoryOptimization(r.getManipulator,i,tf,options);
-        prog = prog.setSolverOptions('snopt','MajorIterationsLimit',200);
-        prog = prog.setSolverOptions('snopt','MinorIterationsLimit',200000);
-        prog = prog.setSolverOptions('snopt','IterationsLimit',200000);
-        prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
-        prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 5e-4);
-        prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-4);
-        prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-4);
+        prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
+        prog = prog.setSolverOptions('snopt','MajorIterationsLimit',500);
+        prog = prog.setSolverOptions('snopt','MinorIterationsLimit',500000);
+        prog = prog.setSolverOptions('snopt','IterationsLimit',500000);
+%         prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
+%         prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-4);
+%         prog = prog.setSolverOptions('snopt','print','snopt.out');
+%         prog = prog.setCheckGrad(true);
+%         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-4);
+%         prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-4);
         
         for j = 2:i
             uIMU = [0; 0; 0];
@@ -178,33 +199,32 @@ for scseq=1:length(scale_sequence)
             for k = inds(j-1)+1:inds(j)
                 dt = times(k) - times(k-1);
                 
-                uIMU(1) = uIMU(1) + dt*round(xddot(k), 2);
-                uIMU(2) = uIMU(2) + dt*round(yddot(k), 2);
+                uIMU(1) = uIMU(1) + dt*xddot(k);
+                uIMU(2) = uIMU(2) + dt*yddot(k);
                 
-                uTHETA = uTHETA + dt*round(thetadot(k), 2);
+                uTHETA = uTHETA + dt*thetadot(k);
             end
             
-            uIMU(3) = round(thetadot(inds(j)), 2);
+            uIMU(3) = thetadot(inds(j));
             
             IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
-            IMUerr_cost = FunctionHandleObjective(2,IMU_fun);
+            IMUerr_cost = FunctionHandleObjective(6,IMU_fun);
             prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
             
             Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
-            Theta_err_cost = FunctionHandleObjective(1, Theta_fun);
+            Theta_err_cost = FunctionHandleObjective(2, Theta_fun);
             prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
         end
         
-        % initial conditions constraint
         traj_init.x = xtraj;
         traj_init.l = ltraj;
         
-        %    prog = addStateConstraint(prog, ConstantConstraint(x0),1);
         prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
         
         tic
         [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
         toc
+        assert info == 1;
     end
     
     %% plot the final errors
@@ -223,12 +243,13 @@ for scseq=1:length(scale_sequence)
         theta_err(i) = (x_gt(i, 3) - theta_calc(i))/x_gt(i, 3);
     end
     
+    % only plot the results of integration here
     figure
-    plot(times(inds), x_sensor(:, 1), '+', times(inds), xdot_calc, '*');
+    plot(times(inds), xdot_gt(:, 1), '+', times(inds), xdot_calc, '*');
     title(['gt-xdot (+) and xdot-calc (*) vs times :: scale = ',num2str(num)]);
     
     figure
-    plot(times(inds), x_sensor(:, 2), '+', times(inds), ydot_calc, '*');
+    plot(times(inds), xdot_gt(:, 2), '+', times(inds), ydot_calc, '*');
     title(['gt-ydot (+) and ydot-calc (*) vs times :: scale = ',num2str(num)]);
     
     figure
@@ -255,9 +276,6 @@ poses(1:3, :) = [traj(1, :)', traj(2, :)', traj(3, :)']';
 xtraj_constructed = DTTrajectory(dttimes, poses);
 xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
 v.playback(xtraj_constructed, struct('slider', true));
-
-
-%keyboard;
 
 %% cost fun!
     function [f, df] = IMUcost(x, oldx, u)
