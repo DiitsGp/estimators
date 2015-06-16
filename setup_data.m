@@ -1,4 +1,3 @@
-%% load data
 format long g;
 OptiData = csvread('Mar312015Sample01_2d.csv'); %time, x, y, theta
 %checkDependency('lcmgl');
@@ -37,7 +36,7 @@ yddot = yddot(87:end);
 % I let the IMU sit on a table and measured the gravitational acceleration.
 %   Using a known value for g = -9.80665, I calculated the SNR of the IMU as
 %   50.7912.
-SNR = getSNR() - 10; % make it more noisy than the actual sensor just for funsies
+SNR = getSNR() - 10;
 thetadot = awgn(thetadot, SNR);
 xddot = awgn(xddot, SNR);
 yddot = awgn(yddot, SNR);
@@ -70,7 +69,7 @@ N = 15;
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
 x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); xdot(1); ydot(1); thetadot(1)];
-[r, xtraj, info] = contactBasedStateEstimator(times, x0, xddot, yddot, thetadot, G, 1);
+[r, xtraj, info] = contactBasedStateEstimator(times, x0, xddot, yddot, thetadot, G);
 
 xdot_gt = [xdot(inds), ydot(inds), thetadot(inds)];
 x_gt = [x_filt(inds), y_filt(inds), theta_filt(inds)];

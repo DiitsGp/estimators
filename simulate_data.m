@@ -1,24 +1,25 @@
 options.terrain = RigidBodyFlatTerrain();
 options.floating = true;
-options.dt = 0.0083;
+options.dt = 0.001;
 
 w = warning('off','Drake:RigidBodyManipulator:UnsupportedContactPoints');
 urdf = fullfile('CBSE_Window.URDF');
 
-G = -5.5;
+G = -4;
 p = PlanarRigidBodyManipulator(urdf, options);
 p = p.setGravity([0; 0; G]);
 r = TimeSteppingRigidBodyManipulator(p, options.dt);
 
-tf = 3;
-x0 = [0; 1; 5*3.31415926/6; 0; 0; 0];
+N = 15;
+tf = 2.87;
+x0 = [0; 1; 2*pi/3; 0; 0; 0];
 
 xtraj_ts = simulate(r, [0 tf], x0);
 
 traj = xtraj_ts.eval(xtraj_ts.getBreaks());
 x = traj(1, :);
 y = traj(2, :);
-theta = traj(3, :);
+theta = traj(3, :) - pi;
 xdot = traj(4, :);
 ydot = traj(5, :);
 thetadot = traj(6, :);
@@ -35,6 +36,7 @@ xddot = awgn(xddot, 45);
 yddot = awgn(yddot, 45);
 noisy_thetadot = awgn(thetadot, 45);
 
+sensor_inds = round(linspace(1, numel(xddot),  round(120*tf)));
 inds = round(linspace(1, size(times, 1), 15));
 
 v = r.constructVisualizer;
@@ -47,10 +49,10 @@ xtraj_constructed = DTTrajectory(dttimes, poses);
 xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
 v.playback(xtraj_constructed, struct('slider', true));
 
-figure
-plot(times(inds), theta(inds), '*');
-
-[r, xtraj, info] = contactBasedStateEstimator(times, x0, xddot, yddot, noisy_thetadot, G, 1);
+% figure
+% plot(times(inds), theta(inds), '*');
+xtraj = PPTrajectory(foh([0, tf/N],[x0, x0]));
+[r, xtraj, info] = contactBasedStateEstimator(times(sensor_inds), x0, xddot(sensor_inds), yddot(sensor_inds), noisy_thetadot(sensor_inds), G);
 
 for i = 1:15
     t = times(inds(i));
@@ -63,15 +65,15 @@ end
 
 % only plot the results of integration here
 figure
-plot(times(inds), xdot(inds), '+', times(inds), xdot_calc, '*');
-title('sim-xdot (+) and xdot-calc (*) vs times :: scale = 1');
+plot(times(inds), xdot(inds), '+');
+title('sim-xdot (+)');
 
 figure
-plot(times(inds), ydot(inds), '+', times(inds), ydot_calc, '*');
-title('sim-ydot (+) and ydot-calc (*) vs times :: scale = 1');
+plot(times(inds), ydot(inds), '+');
+title('sim-ydot (+)');
 
 figure
-plot(times(inds), theta(inds), '+', times(inds), theta_calc, '*');
-title('sim-theta (+) and theta-calc (*) vs times :: scale = 1');
+plot(times(inds), theta(inds), '+');
+title('sim-theta (+)');
 
 drawnow;
