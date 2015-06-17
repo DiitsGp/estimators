@@ -55,7 +55,12 @@ v.playback(xtraj_constructed, struct('slider', true));
 
 % figure
 % plot(times(inds), theta(inds), '*');
-[r, xtraj, info] = contactBasedStateEstimator(times(sensor_inds), x0, xddot, yddot, noisy_thetadot, G);
+traj_sim = simulate(r, [0 tf], x0);
+ts_sim = traj_sim.getBreaks();
+traj_sim = PPTrajectory(foh(ts_sim,traj_sim.eval(ts_sim)));
+ts = times(sensor_inds);
+data = [ts, xddot', yddot', noisy_thetadot'];
+[r, xtraj, info] = contactBasedStateEstimator(x0, data, traj_sim, G);
 
 for i = 1:15
     t = times(inds(i));

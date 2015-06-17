@@ -68,8 +68,24 @@ end
 N = 15;
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
+
 x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); xdot(inds(1)); ydot(inds(1)); thetadot(inds(1))];
-[r, xtraj, info] = contactBasedStateEstimator(times, x0, xddot, yddot, thetadot, G);
+
+options.terrain = RigidBodyFlatTerrain();
+options.dt = 0.01;
+options.floating = true;
+options.selfCollisions = false;
+urdf = fullfile('CBSE_Window.URDF');
+p = PlanarRigidBodyManipulator(urdf, options);
+p = p.setGravity([0; 0; G]);
+r = TimeSteppingRigidBodyManipulator(p, options.dt);
+
+traj_sim = simulate(r, [0 tf], x0);
+ts_sim = traj_sim.getBreaks();
+traj_sim = PPTrajectory(foh(ts_sim,traj_sim.eval(ts_sim)));
+data = [times, xddot, yddot, thetadot];
+
+[r, xtraj, info] = contactBasedStateEstimator(x0, data, traj_sim, G);
 
 xdot_gt = [xdot(inds), ydot(inds), thetadot(inds)];
 x_gt = [x_filt(inds), y_filt(inds), theta_filt(inds)];
