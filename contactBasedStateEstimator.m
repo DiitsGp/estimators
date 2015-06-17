@@ -47,7 +47,10 @@ x0max.base_zdot = inf;
 x0max.base_relative_pitchdot = inf;
 
 %% do trajectory optimization
-scale_sequence = [1, 0.1, 0.01, 0];
+scale_sequence = [0];
+
+traj_sim = simulate(r, [0 tf], x0);
+%traj_sim = traj_sim.eval(traj_sim.getBreaks());
 
 for scseq=1:numel(scale_sequence)
     num = scale_sequence(scseq);
@@ -57,15 +60,13 @@ for scseq=1:numel(scale_sequence)
     prog = prog.setSolverOptions('snopt','MajorIterationsLimit',500);
     prog = prog.setSolverOptions('snopt','MinorIterationsLimit',500000);
     prog = prog.setSolverOptions('snopt','IterationsLimit',500000);
-
+    
     prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
-
-    %if (scseq == 1)
-        traj_init.x = PPTrajectory(foh([0, tf/N],[x0,x0]));
-    %else
-    %    traj_init.x = xtraj;
-    %    traj_init.l = ltraj;
-    %end
+    
+    ts_sim = traj_sim.getBreaks();
+    traj_sim = PPTrajectory(foh(ts_sim,traj_sim.eval(ts_sim)));
+    
+    traj_init.x = traj_sim;
     [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
     
     for i=2:N
@@ -78,12 +79,12 @@ for scseq=1:numel(scale_sequence)
         prog = prog.setSolverOptions('snopt','MajorIterationsLimit',750);
         prog = prog.setSolverOptions('snopt','MinorIterationsLimit',750000);
         prog = prog.setSolverOptions('snopt','IterationsLimit',750000);
-%         prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
-%         prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-6);
+        %         prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
+        %         prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-6);
         prog = prog.setSolverOptions('snopt','print','snopt.out');
-%         prog = prog.setCheckGrad(true);
-%         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-6);
-%         prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-6);
+        %         prog = prog.setCheckGrad(true);
+        %         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-6);
+        %         prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-6);
         
         for j = 2:i
             uIMU = [0; 0; 0];
@@ -139,32 +140,6 @@ for scseq=1:numel(scale_sequence)
     xtraj_constructed = DTTrajectory(dttimes, poses);
     xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
     v.playbackAVI(xtraj_constructed, ['SimScale', num2str(num)]);
-    
-    % plot the final errors
-    for i = 1:N
-        t = times(inds(i));
-        xtrajloop = xtraj.eval(t);
-
-        theta_calc(i) = xtrajloop(3);
-        xdot_calc(i) = xtrajloop(4);
-        ydot_calc(i) = xtrajloop(5);
-    end
-%     
-% %     only plot the results of integration here
-    figure
-    plot(times(inds), xdot_calc, '*');
-    title(['xdot-calc (*) vs times :: scale = ',num2str(num)]);
-    
-    figure
-    plot(times(inds), ydot_calc, '*');
-    title(['ydot-calc (*) vs times :: scale = ',num2str(num)]);
-    
-    figure
-    plot(times(inds), theta_calc, '*');
-    title(['theta-calc (*) vs times :: scale = ',num2str(num)]);
-    
-    drawnow;
-%     
 end
 %% cost fun!
     function [f, df] = IMUcost(x, oldx, u)

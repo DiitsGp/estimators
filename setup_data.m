@@ -68,7 +68,7 @@ end
 N = 15;
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
-x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); xdot(1); ydot(1); thetadot(1)];
+x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); xdot(inds(1)); ydot(inds(1)); thetadot(inds(1))];
 [r, xtraj, info] = contactBasedStateEstimator(times, x0, xddot, yddot, thetadot, G);
 
 xdot_gt = [xdot(inds), ydot(inds), thetadot(inds)];
@@ -101,14 +101,14 @@ end
 % only plot the results of integration here
 figure
 plot(times(inds), xdot_gt(:, 1), '+', times(inds), xdot_calc, '*');
-title('gt-xdot (+) and xdot-calc (*) vs times :: scale = 0.1');
+title('gt-xdot (+) and xdot-calc (*) vs times');
 
 figure
 plot(times(inds), xdot_gt(:, 2), '+', times(inds), ydot_calc, '*');
-title('gt-ydot (+) and ydot-calc (*) vs times :: scale = 0.1');
+title('gt-ydot (+) and ydot-calc (*) vs times');
 
 figure
 plot(times(inds), x_gt(:, 3), '+', times(inds), theta_calc, '*');
-title('gt-theta (+) and theta-calc (*) vs times :: scale = 0.1');
+title('gt-theta (+) and theta-calc (*) vs times');
 
 drawnow;

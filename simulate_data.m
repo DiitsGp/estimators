@@ -26,17 +26,21 @@ thetadot = traj(6, :);
 
 times = linspace(0, tf, length(x));
 dt = diff(times);
-xddot = diff(xdot)./dt(1:end);
-yddot = diff(ydot)./dt(1:end);
+sensor_inds = round(linspace(1, numel(xdot)-1, round(120*tf))-1)+1;
+tempxdot = xdot(sensor_inds);
+tempydot = ydot(sensor_inds);
+tempdt = dt(sensor_inds)*numel(times)/numel(sensor_inds);
+xddot = diff(tempxdot)./tempdt(1:numel(tempdt)-1);
+yddot = diff(tempydot)./tempdt(1:numel(tempdt)-1);
+sensor_inds = sensor_inds(1:numel(sensor_inds)-1);
 
 times = times(1:numel(times)-1) - times(1);
 times = times';
 
 xddot = awgn(xddot, 45);
 yddot = awgn(yddot, 45);
-noisy_thetadot = awgn(thetadot, 45);
+noisy_thetadot = awgn(thetadot(sensor_inds), 45);
 
-sensor_inds = round(linspace(1, numel(xddot),  round(120*tf)));
 inds = round(linspace(1, size(times, 1), 15));
 
 v = r.constructVisualizer;
@@ -51,8 +55,7 @@ v.playback(xtraj_constructed, struct('slider', true));
 
 % figure
 % plot(times(inds), theta(inds), '*');
-xtraj = PPTrajectory(foh([0, tf/N],[x0, x0]));
-[r, xtraj, info] = contactBasedStateEstimator(times(sensor_inds), x0, xddot(sensor_inds), yddot(sensor_inds), noisy_thetadot(sensor_inds), G);
+[r, xtraj, info] = contactBasedStateEstimator(times(sensor_inds), x0, xddot, yddot, noisy_thetadot, G);
 
 for i = 1:15
     t = times(inds(i));
@@ -65,15 +68,16 @@ end
 
 % only plot the results of integration here
 figure
-plot(times(inds), xdot(inds), '+');
-title('sim-xdot (+)');
+plot(times(inds), xdot(inds), '+', times(inds), xdot_calc, '*');
+title('sim-xdot (+) and xdot-calc (*) vs times');
 
 figure
-plot(times(inds), ydot(inds), '+');
-title('sim-ydot (+)');
+plot(times(inds), ydot(inds), '+', times(inds), ydot_calc, '*');
+title('sim-ydot (+) and ydot-calc (*) vs times');
 
 figure
-plot(times(inds), theta(inds), '+');
-title('sim-theta (+)');
+plot(times(inds), theta(inds), '+', times(inds), theta_calc, '*');
+title('sim-theta (+) and theta-calc (*) vs times');
+
 
 drawnow;
