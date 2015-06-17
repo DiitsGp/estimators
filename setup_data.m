@@ -85,7 +85,7 @@ ts_sim = traj_sim.getBreaks();
 traj_sim = PPTrajectory(foh(ts_sim,traj_sim.eval(ts_sim)));
 data = [times, xddot, yddot, thetadot];
 
-[r, xtraj, info] = contactBasedStateEstimator(x0, data, traj_sim, G);
+[r, xtraj, info] = contactBasedStateEstimator(r, N, x0, data, traj_sim);
 
 xdot_gt = [xdot(inds), ydot(inds), thetadot(inds)];
 x_gt = [x_filt(inds), y_filt(inds), theta_filt(inds)];

@@ -60,9 +60,9 @@ ts_sim = traj_sim.getBreaks();
 traj_sim = PPTrajectory(foh(ts_sim,traj_sim.eval(ts_sim)));
 ts = times(sensor_inds);
 data = [ts, xddot', yddot', noisy_thetadot'];
-[r, xtraj, info] = contactBasedStateEstimator(x0, data, traj_sim, G);
+[r, xtraj, info] = contactBasedStateEstimator(r, N, x0, data, traj_sim);
 
-for i = 1:15
+for i = 1:N
     t = times(inds(i));
     xtrajloop = xtraj.eval(t);
     

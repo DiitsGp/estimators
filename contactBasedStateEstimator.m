@@ -1,4 +1,4 @@
-function [r,xtraj,utraj,ltraj,z,F,info,prog] = contactBasedStateEstimator(x0, data, xtraj, G)
+function [r,xtraj,utraj,ltraj,z,F,info,prog] = contactBasedStateEstimator(r, N, x0, data, xtraj)
 %ContactBasedStateEstimator
 %   Estimate states given linear acceleration data and angular velocity
 %   data otbained from an onboard IMU in a planar falling brick
@@ -15,15 +15,14 @@ xddot = data(:, 2);
 yddot = data(:, 3);
 thetadot = data(:, 4);
 
-N = 15;
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
 
 %% bounds
-urdf = fullfile('CBSE_Window.URDF');
-p = PlanarRigidBodyManipulator(urdf, options);
-p = p.setGravity([0; 0; G]);
-r = TimeSteppingRigidBodyManipulator(p, options.dt);
+% urdf = fullfile('CBSE_Window.URDF');
+% p = PlanarRigidBodyManipulator(urdf, options);
+% p = p.setGravity([0; 0; G]);
+% r = TimeSteppingRigidBodyManipulator(p, options.dt);
 
 x0min = Point(r.getStateFrame());
 x0max = Point(r.getStateFrame());
