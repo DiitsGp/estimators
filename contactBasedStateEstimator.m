@@ -62,7 +62,7 @@ for i=2:N
     prog = prog.setSolverOptions('snopt','MinorIterationsLimit',750000);
     prog = prog.setSolverOptions('snopt','IterationsLimit',750000);
     %         prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
-    %         prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-6);
+    prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-5);
     prog = prog.setSolverOptions('snopt','print','snopt.out');
     %         prog = prog.setCheckGrad(true);
     %         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-6);
@@ -100,7 +100,7 @@ for i=2:N
     [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
     toc
     if (info ~= 1 && info ~= 3)
-        [c, ceq] = prog.nonlinearConstraints(z);
+        [c, ~] = prog.nonlinearConstraints(z);
         display(prog.cin_name);
         display('cin_lb');
         display(prog.cin_lb);
@@ -109,7 +109,7 @@ for i=2:N
         display('c');
         display(c);
     end
-    assert(info == 1 | info == 3);
+    assert(info == 1);
 end
 
 v = r.constructVisualizer;
@@ -136,8 +136,8 @@ v.playbackAVI(xtraj_constructed, 'xtraj');
 
     function [f, df] = THETAcost(x, oldx, u)
         costmat = [x-oldx];
-        f = 2*(costmat-u)^2;
-        df = 2*2*(costmat-u)*[1, -1];
+        f = (costmat-u)^2;
+        df = 2*(costmat-u)*[1, -1];
     end
 
 end
