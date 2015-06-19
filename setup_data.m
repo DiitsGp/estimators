@@ -65,7 +65,7 @@ for i = 1:length(x_filt)
     yddot(i) = Acc(2);
 end
 
-N = 23;
+N = round(numel(times)/10);
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
 

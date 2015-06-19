@@ -5,7 +5,7 @@ function [r,xtraj,utraj,ltraj,z,F,info,prog] = contactBasedStateEstimator(r, N, 
 
 %% setup
 options.terrain = RigidBodyFlatTerrain();
-options.dt = 0.01;
+options.dt = 0.001;
 options.floating = true;
 options.selfCollisions = false;
 options.integration_method = ContactImplicitTrajectoryOptimization.MIXED;
@@ -42,21 +42,22 @@ x0max.base_zdot = inf;
 x0max.base_relative_pitchdot = inf;
 
 %% do trajectory optimization
-prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
-prog = prog.setSolverOptions('snopt','MajorIterationsLimit',500);
-prog = prog.setSolverOptions('snopt','MinorIterationsLimit',500000);
-prog = prog.setSolverOptions('snopt','IterationsLimit',500000);
-
-prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
-
-traj_init.x = xtraj;
-[xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
-
+% prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
+% prog = prog.setSolverOptions('snopt','MajorIterationsLimit',500);
+% prog = prog.setSolverOptions('snopt','MinorIterationsLimit',500000);
+% prog = prog.setSolverOptions('snopt','IterationsLimit',500000);
+% 
+% prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
+% 
+% traj_init.x = xtraj;
+% [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
+% trajytraj = xtraj.eval(xtraj.getBreaks());
+% display(trajytraj);
 for i=2:N
     display(i);
     options.compl_slack = 0;
     options.lincompl_slack = 0;
-    
+
     prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
     prog = prog.setSolverOptions('snopt','MajorIterationsLimit',750);
     prog = prog.setSolverOptions('snopt','MinorIterationsLimit',750000);
@@ -67,35 +68,37 @@ for i=2:N
     %         prog = prog.setCheckGrad(true);
     %         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-6);
     %         prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-6);
-    
+
     for j = 2:i
         uIMU = [0; 0; 0];
         uTHETA = [0];
         for k = inds(j-1)+1:inds(j)
             dt = times(k) - times(k-1);
-            
+
             uIMU(1) = uIMU(1) + dt*xddot(k);
             uIMU(2) = uIMU(2) + dt*yddot(k);
-            
+
             uTHETA = uTHETA + dt*thetadot(k);
         end
-        
+
         uIMU(3) = thetadot(inds(j));
-        
+
         IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
         IMUerr_cost = FunctionHandleObjective(6,IMU_fun);
         prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
-        
+
         Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
         Theta_err_cost = FunctionHandleObjective(2, Theta_fun);
         prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
     end
-    
+
     traj_init.x = xtraj;
-    traj_init.l = ltraj;
+    if i > 2
+        traj_init.l = ltraj;
+    end
     
     prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
-    
+
     tic
     [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
     toc
@@ -113,7 +116,7 @@ for i=2:N
 end
 
 v = r.constructVisualizer;
-v.display_dt = 0.01;
+v.display_dt = 0.001;
 traj = xtraj.eval(xtraj.getBreaks());
 poses = zeros(6, length(inds));
 traj(2, :) = traj(2, :);
@@ -121,7 +124,7 @@ poses(1:3, :) = [traj(1, :)', traj(2, :)', traj(3, :)']';
 dttimes = linspace(times(1), times(end), length(times(inds)));
 xtraj_constructed = DTTrajectory(dttimes, poses);
 xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
-v.playbackAVI(xtraj_constructed, 'xtraj');
+v.playback(xtraj_constructed, struct('slider', true));
 
 %% cost fun!
     function [f, df] = IMUcost(x, oldx, u)

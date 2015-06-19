@@ -10,7 +10,6 @@ p = PlanarRigidBodyManipulator(urdf, options);
 p = p.setGravity([0; 0; G]);
 r = TimeSteppingRigidBodyManipulator(p, options.dt);
 
-N = 22;
 tf = 1.87;
 x0 = [0; 1; 2*pi/3; 0; 0; 0];
 
@@ -34,6 +33,8 @@ xddot = diff(tempxdot)./tempdt(1:numel(tempdt)-1);
 yddot = diff(tempydot)./tempdt(1:numel(tempdt)-1);
 sensor_inds = sensor_inds(1:numel(sensor_inds)-1);
 
+N = round(numel(sensor_inds)/10);
+
 times = times(1:numel(times)-1) - times(1);
 times = times';
 
@@ -52,7 +53,7 @@ poses(1:3, :) = [x; y; theta];
 dttimes = linspace(times(1), times(end), numel(x));
 xtraj_constructed = DTTrajectory(dttimes, poses);
 xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
-v.playback(xtraj_constructed, struct('slider', true));
+v.playback(xtraj_constructed);
 
 % figure
 % plot(times(inds), theta(inds), '*');
