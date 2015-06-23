@@ -75,80 +75,78 @@ end
 % prog = prog.setSolverOptions('snopt','MajorIterationsLimit',500);
 % prog = prog.setSolverOptions('snopt','MinorIterationsLimit',500000);
 % prog = prog.setSolverOptions('snopt','IterationsLimit',500000);
-% 
+%
 % prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
-% 
+%
 % traj_init.x = xtraj;
 % [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
 % trajytraj = xtraj.eval(xtraj.getBreaks());
 % display(trajytraj);
-for i=N:N
-    display(i);
-    options.compl_slack = 0;
-    options.lincompl_slack = 0;
+display(i);
+options.compl_slack = 0;
+options.lincompl_slack = 0;
 
-    prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
-    prog = prog.setSolverOptions('snopt','MajorIterationsLimit',750);
-    prog = prog.setSolverOptions('snopt','MinorIterationsLimit',750000);
-    prog = prog.setSolverOptions('snopt','IterationsLimit',750000);
-    %         prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
-    prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-5);
-    prog = prog.setSolverOptions('snopt','print','snopt.out');
-    %         prog = prog.setCheckGrad(true);
-    %         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-6);
-    %         prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-6);
+prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
+prog = prog.setSolverOptions('snopt','MajorIterationsLimit',750);
+prog = prog.setSolverOptions('snopt','MinorIterationsLimit',750000);
+prog = prog.setSolverOptions('snopt','IterationsLimit',750000);
+%         prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
+prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-5);
+prog = prog.setSolverOptions('snopt','print','snopt.out');
+%         prog = prog.setCheckGrad(true);
+%         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-6);
+%         prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-6);
 
-    for j = 2:i
-        uIMU = [0; 0; 0];
-        uTHETA = [0];
-        for k = inds(j-1)+1:inds(j)
-            dt = times(k) - times(k-1);
-
-            uIMU(1) = uIMU(1) + dt*xddot(k);
-            uIMU(2) = uIMU(2) + dt*yddot(k);
-
-            uTHETA = uTHETA + dt*thetadot(k);
-        end
-
-        uIMU(3) = thetadot(inds(j));
-
-        IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
-        IMUerr_cost = FunctionHandleObjective(6,IMU_fun);
-
-        Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
-        Theta_err_cost = FunctionHandleObjective(2, Theta_fun);
-
-        if (numstates == 6)
-            prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
-            prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
-        else
-            prog = addCost(prog,IMUerr_cost,{prog.x_inds([7, 9, 10], j); prog.x_inds([7, 9, 10], j-1)});
-            prog = addCost(prog, Theta_err_cost, {prog.x_inds(4, j); prog.x_inds(4, j-1)});
-        end
+for j = 2:N
+    uIMU = [0; 0; 0];
+    uTHETA = [0];
+    for k = inds(j-1)+1:inds(j)
+        dt = times(k) - times(k-1);
+        
+        uIMU(1) = uIMU(1) + dt*xddot(k);
+        uIMU(2) = uIMU(2) + dt*yddot(k);
+        
+        uTHETA = uTHETA + dt*thetadot(k);
     end
+    
+    uIMU(3) = thetadot(inds(j));
+    
+    IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
+    IMUerr_cost = FunctionHandleObjective(6,IMU_fun);
+    
+    Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
+    Theta_err_cost = FunctionHandleObjective(2, Theta_fun);
+    
+    if (numstates == 6)
+        prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
+        prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
+    else
+        prog = addCost(prog,IMUerr_cost,{prog.x_inds([7, 9, 10], j); prog.x_inds([7, 9, 10], j-1)});
+        prog = addCost(prog, Theta_err_cost, {prog.x_inds(4, j); prog.x_inds(4, j-1)});
+    end
+end
 
-    traj_init.x = xtraj;
+traj_init.x = xtraj;
 %     if i > 2
 %         traj_init.l = ltraj;
 %     end
-    
-    prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
 
-    tic
-    [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
-    toc
-    if (info ~= 1 && info ~= 3)
-        [c, ~] = prog.nonlinearConstraints(z);
-        display(prog.cin_name);
-        display('cin_lb');
-        display(prog.cin_lb);
-        display('cin_ub');
-        display(prog.cin_ub);
-        display('c');
-        display(c);
-    end
-    assert(info == 1);
+prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
+
+tic
+[xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
+toc
+if (info ~= 1 && info ~= 3)
+    [c, ~] = prog.nonlinearConstraints(z);
+    display(prog.cin_name);
+    display('cin_lb');
+    display(prog.cin_lb);
+    display('cin_ub');
+    display(prog.cin_ub);
+    display('c');
+    display(c);
 end
+assert(info == 1);
 
 v = r.constructVisualizer;
 v.display_dt = 0.001;
