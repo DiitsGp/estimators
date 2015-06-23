@@ -23,23 +23,52 @@ inds = round(linspace(1, size(times, 1), N));
 % p = PlanarRigidBodyManipulator(urdf, options);
 % p = p.setGravity([0; 0; G]);
 % r = TimeSteppingRigidBodyManipulator(p, options.dt);
+numstates = r.getNumStates;
 
 x0min = Point(r.getStateFrame());
 x0max = Point(r.getStateFrame());
 
-x0min.base_x = x0(1);
-x0min.base_z = 0;
-x0min.base_relative_pitch = -inf;
-x0min.base_xdot = -inf;
-x0min.base_zdot = -inf;
-x0min.base_relative_pitchdot =  -inf;
-
-x0max.base_x = x0(1);
-x0max.base_z = inf;
-x0max.base_relative_pitch = inf;
-x0max.base_xdot = inf;
-x0max.base_zdot = inf;
-x0max.base_relative_pitchdot = inf;
+if (numstates == 6)
+    x0min.base_x = x0(1);
+    x0min.base_z = 0;
+    x0min.base_relative_pitch = -inf;
+    x0min.base_xdot = -inf;
+    x0min.base_zdot = -inf;
+    x0min.base_relative_pitchdot = -inf;
+    
+    x0max.base_x = x0(1);
+    x0max.base_z = inf;
+    x0max.base_relative_pitch = inf;
+    x0max.base_xdot = inf;
+    x0max.base_zdot = inf;
+    x0max.base_relative_pitchdot = inf;
+else
+    x0min.base_x = x0(1);
+    x0min.base_y = x0(2);
+    x0min.base_z = 0;
+    x0min.base_roll = -inf;
+    x0min.base_pitch = 0;
+    x0min.base_yaw = 0;
+    x0min.base_xdot = -inf;
+    x0min.base_ydot = 0;
+    x0min.base_zdot = -inf;
+    x0min.base_rolldot =  -inf;
+    x0min.base_pitchdot = 0;
+    x0min.base_yawdot = 0;
+    
+    x0max.base_x = x0(1);
+    x0max.base_y = x0(2);
+    x0max.base_z = inf;
+    x0max.base_roll = inf;
+    x0max.base_pitch = 0;
+    x0max.base_yaw = 0;
+    x0max.base_xdot = inf;
+    x0max.base_ydot = 0;
+    x0max.base_zdot = inf;
+    x0max.base_rolldot = inf;
+    x0max.base_pitchdot = 0;
+    x0max.base_yawdot = 0;
+end
 
 %% do trajectory optimization
 % prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
@@ -53,7 +82,7 @@ x0max.base_relative_pitchdot = inf;
 % [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
 % trajytraj = xtraj.eval(xtraj.getBreaks());
 % display(trajytraj);
-for i=2:N
+for i=N:N
     display(i);
     options.compl_slack = 0;
     options.lincompl_slack = 0;
@@ -85,17 +114,23 @@ for i=2:N
 
         IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
         IMUerr_cost = FunctionHandleObjective(6,IMU_fun);
-        prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
 
         Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
         Theta_err_cost = FunctionHandleObjective(2, Theta_fun);
-        prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
+
+        if (numstates == 6)
+            prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
+            prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
+        else
+            prog = addCost(prog,IMUerr_cost,{prog.x_inds([7, 9, 10], j); prog.x_inds([7, 9, 10], j-1)});
+            prog = addCost(prog, Theta_err_cost, {prog.x_inds(4, j); prog.x_inds(4, j-1)});
+        end
     end
 
     traj_init.x = xtraj;
-    if i > 2
-        traj_init.l = ltraj;
-    end
+%     if i > 2
+%         traj_init.l = ltraj;
+%     end
     
     prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
 
@@ -118,9 +153,12 @@ end
 v = r.constructVisualizer;
 v.display_dt = 0.001;
 traj = xtraj.eval(xtraj.getBreaks());
-poses = zeros(6, length(inds));
-traj(2, :) = traj(2, :);
-poses(1:3, :) = [traj(1, :)', traj(2, :)', traj(3, :)']';
+poses = zeros(numstates, length(inds));
+if (numstates == 6)
+    poses(1:3, :) = [traj(1, :)', traj(2, :)', traj(3, :)']';
+else
+    poses([1, 2, 3, 4, 5, 6], :) = [traj(1, :)', traj(2, :)', traj(3, :)', traj(4, :)', traj(5, :)', traj(6, :)']';
+end
 dttimes = linspace(times(1), times(end), length(times(inds)));
 xtraj_constructed = DTTrajectory(dttimes, poses);
 xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);

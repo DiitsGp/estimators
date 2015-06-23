@@ -69,14 +69,17 @@ N = round(numel(times)/10);
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
 
-x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); xdot(inds(1)); ydot(inds(1)); thetadot(inds(1))];
+x0 = [x_filt(inds(1)); y_filt(inds(1)); theta_filt(inds(1)); xdot(inds(1)); ydot(inds(1)); thetadot(inds(1));];
 
 options.terrain = RigidBodyFlatTerrain();
 options.dt = 0.01;
 options.floating = true;
 options.selfCollisions = false;
-urdf = fullfile('CBSE_Window.URDF');
+options.use_bullet = false;
+
+urdf = fullfile('Planar_CBSE_Window.URDF');
 p = PlanarRigidBodyManipulator(urdf, options);
+% p = RigidBodyManipulator(urdf, options);
 p = p.setGravity([0; 0; G]);
 r = TimeSteppingRigidBodyManipulator(p, options.dt);
 
