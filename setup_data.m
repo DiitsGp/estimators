@@ -36,7 +36,7 @@ yddot = yddot(87:end);
 % I let the IMU sit on a table and measured the gravitational acceleration.
 %   Using a known value for g = -9.80665, I calculated the SNR of the IMU as
 %   50.7912.
-SNR = getSNR() - 10;
+SNR = getSNR();
 thetadot = awgn(thetadot, SNR);
 xddot = awgn(xddot, SNR);
 yddot = awgn(yddot, SNR);
@@ -86,7 +86,8 @@ r = TimeSteppingRigidBodyManipulator(p, options.dt);
 traj_sim = simulate(r, [0 tf], x0);
 ts_sim = traj_sim.getBreaks();
 traj_sim = PPTrajectory(foh(ts_sim,traj_sim.eval(ts_sim)));
-data = [times, xddot, yddot, thetadot];
+non_meas = zeros(numel(xddot), 1);
+data = [times, xddot, non_meas, yddot, non_meas, thetadot, non_meas];
 
 [r, xtraj, info] = contactBasedStateEstimator(r, N, x0, data, traj_sim);
 

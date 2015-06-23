@@ -31,11 +31,14 @@ traj = xtraj_ts.eval(xtraj_ts.tt);
 % zdot = traj(5, :);
 % thetadot = traj(6, :);
 x = traj(1, :);
+y = traj(2, :);
 z = traj(3, :);
-theta = traj(4, :);
+roll = traj(4, :);
 xdot = traj(7, :);
 zdot = traj(9, :);
-thetadot = traj(10, :);
+rolldot = traj(10, :);
+pitchdot = traj(11, :);
+yawdot = traj(12, :);
 
 times = linspace(0, tf, length(x));
 dt = diff(times);
@@ -52,10 +55,10 @@ N = round(numel(sensor_inds)/10);
 times = times(1:numel(times)-1) - times(1);
 times = times';
 
-% xddot = awgn(xddot, 45);
-% zddot = awgn(zddot, 45);
-% noisy_thetadot = awgn(thetadot(sensor_inds), 45);
-noisy_thetadot = thetadot(sensor_inds);
+xddot = awgn(xddot, 45);
+zddot = awgn(zddot, 45);
+noisy_thetadot = awgn(rolldot(sensor_inds), 45);
+% noisy_thetadot = rolldot(sensor_inds);
 
 inds = round(linspace(1, size(times, 1), N));
 
@@ -63,7 +66,7 @@ v = r.constructVisualizer;
 v.display_dt = 0.01;
 poses = zeros(r.getNumStates(), numel(x));
 % poses([1, 2, 3], :) = [x; z; theta];
-poses([1, 3, 4], :) = [x; z; theta];
+poses([1, 3, 4], :) = [x; z; roll];
 dttimes = linspace(times(1), times(end), numel(x));
 xtraj_constructed = DTTrajectory(dttimes, poses);
 xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
@@ -77,7 +80,10 @@ traj_sim = xtraj_ts;
 ts_sim = traj_sim.getBreaks();
 traj_sim = PPTrajectory(foh(ts_sim,traj_sim.eval(ts_sim)));
 ts = times(sensor_inds);
-data = [ts, xddot', zddot', noisy_thetadot'];
+pitchdot = pitchdot(sensor_inds);
+yawdot = yawdot(sensor_inds);
+non_meas = zeros(numel(xddot), 1);
+data = [ts, xddot', non_meas, zddot', noisy_thetadot', non_meas, non_meas];
 [r, xtraj, info] = contactBasedStateEstimator(r, N, x0, data, traj_sim);
 
 for i = 1:N
@@ -102,7 +108,7 @@ plot(times(inds), zdot(inds), '+', times(inds), zdot_calc, '*');
 title('sim-zdot (+) and zdot-calc (*) vs times');
 
 figure
-plot(times(inds), theta(inds), '+', times(inds), theta_calc, '*');
+plot(times(inds), roll(inds), '+', times(inds), theta_calc, '*');
 title('sim-theta (+) and theta-calc (*) vs times');
 
 

@@ -13,22 +13,19 @@ options.integration_method = ContactImplicitTrajectoryOptimization.MIXED;
 times = data(:, 1);
 xddot = data(:, 2);
 yddot = data(:, 3);
-thetadot = data(:, 4);
+zddot = data(:, 4);
+rolldot = data(:, 5);
+pitchdot = data(:, 6);
+yawdot = data(:, 7);
 
 tf = times(end) - times(1);
 inds = round(linspace(1, size(times, 1), N));
 
 %% bounds
-% urdf = fullfile('CBSE_Window.URDF');
-% p = PlanarRigidBodyManipulator(urdf, options);
-% p = p.setGravity([0; 0; G]);
-% r = TimeSteppingRigidBodyManipulator(p, options.dt);
-numstates = r.getNumStates;
-
 x0min = Point(r.getStateFrame());
 x0max = Point(r.getStateFrame());
 
-if (numstates == 6)
+if (r.twoD == 1)
     x0min.base_x = x0(1);
     x0min.base_z = 0;
     x0min.base_relative_pitch = -inf;
@@ -82,77 +79,89 @@ end
 % [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
 % trajytraj = xtraj.eval(xtraj.getBreaks());
 % display(trajytraj);
-display(i);
-options.compl_slack = 0;
-options.lincompl_slack = 0;
-
-prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
-prog = prog.setSolverOptions('snopt','MajorIterationsLimit',750);
-prog = prog.setSolverOptions('snopt','MinorIterationsLimit',750000);
-prog = prog.setSolverOptions('snopt','IterationsLimit',750000);
-%         prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
-prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-5);
-prog = prog.setSolverOptions('snopt','print','snopt.out');
-%         prog = prog.setCheckGrad(true);
-%         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-6);
-%         prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-6);
-
-for j = 2:N
-    uIMU = [0; 0; 0];
-    uTHETA = [0];
-    for k = inds(j-1)+1:inds(j)
-        dt = times(k) - times(k-1);
-        
-        uIMU(1) = uIMU(1) + dt*xddot(k);
-        uIMU(2) = uIMU(2) + dt*yddot(k);
-        
-        uTHETA = uTHETA + dt*thetadot(k);
+% scale_sequence = [1, 0.001, 0];
+% 
+% for i = 1:numel(scale_sequence)
+%     scale = scale_sequence(i);
+%     display(['Scale: ', num2str(scale)]);
+    options.compl_slack = 0;%scale * 0.01;
+    options.lincompl_slack = 0;%scale * 0.001;
+    
+    prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
+    prog = prog.setSolverOptions('snopt','MajorIterationsLimit',750);
+    prog = prog.setSolverOptions('snopt','MinorIterationsLimit',750000);
+    prog = prog.setSolverOptions('snopt','IterationsLimit',750000);
+    %         prog = prog.setSolverOptions('snopt', 'FunctionPrecision', 1e-12);
+    prog = prog.setSolverOptions('snopt', 'MajorOptimalityTolerance', 1e-5);
+    prog = prog.setSolverOptions('snopt','print','snopt.out');
+%     prog = prog.setCheckGrad(true);
+    %         prog = prog.setSolverOptions('snopt', 'MajorFeasibilityTolerance', 1e-6);
+    %         prog = prog.setSolverOptions('snopt', 'MinorFeasibilityTolerance', 1e-6);
+    
+    for kp = 2:N
+        display(['Added cost function for knot point: ', num2str(kp)]);
+        if (r.twoD == 1)
+            measIMU = [0; 0; 0];
+            measANG = [0];
+            for k = inds(kp-1)+1:inds(kp)
+                dt = times(k) - times(k-1);
+                measIMU(1) = measIMU(1) + dt*xddot(k);
+                measIMU(2) = measIMU(2) + dt*zddot(k);
+                measANG = measANG + dt*pitchdot(k);
+            end
+            measIMU(3) = pitchdot(inds(kp));
+            
+            IMU_fun = @(x, oldx) IMUcost2(x, oldx, measIMU);
+            IMUerr_cost = FunctionHandleObjective(6, IMU_fun);
+            
+            Angular_fun = @(x, oldx) ANGcost2(x, oldx, measANG);
+            Angular_err_cost = FunctionHandleObjective(2, Angular_fun);
+            
+            prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, kp); prog.x_inds(4:6, kp-1)});
+            prog = addCost(prog, Angular_err_cost, {prog.x_inds(3, kp); prog.x_inds(3, kp-1)});
+        else
+            measIMU = [0; 0; 0; 0; 0; 0];
+            measANG = [0; 0; 0];
+            for k = inds(kp-1)+1:inds(kp)
+                dt = times(k) - times(k-1);
+                measIMU(1) = measIMU(1) + dt*xddot(k);
+                measIMU(2) = measIMU(2) + dt*yddot(k);
+                measIMU(3) = measIMU(3) + dt*zddot(k);
+                measANG(1) = measANG(1) + dt*rolldot(k);
+                measANG(2) = measANG(2) + dt*pitchdot(k);
+                measANG(3) = measANG(3) + dt*yawdot(k);
+            end
+            measIMU(4) = rolldot(inds(kp));
+            measIMU(5) = pitchdot(inds(kp));
+            measIMU(6) = yawdot(inds(kp));
+            
+            IMU_fun = @(x, oldx) IMUcost3(x, oldx, measIMU);
+            IMUerr_cost = FunctionHandleObjective(12, IMU_fun);
+            
+            Angular_fun = @(x, oldx) ANGcost3(x, oldx, measANG);
+            Angular_err_cost = FunctionHandleObjective(6, Angular_fun);
+            
+            prog = addCost(prog,IMUerr_cost,{prog.x_inds(7:12, kp); prog.x_inds(7:12, kp-1)});
+            prog = addCost(prog, Angular_err_cost, {prog.x_inds(4:6, kp); prog.x_inds(4:6, kp-1)});
+        end
     end
     
-    uIMU(3) = thetadot(inds(j));
-    
-    IMU_fun = @(x, oldx) IMUcost(x, oldx, uIMU);
-    IMUerr_cost = FunctionHandleObjective(6,IMU_fun);
-    
-    Theta_fun = @(x, oldx) THETAcost(x, oldx, uTHETA);
-    Theta_err_cost = FunctionHandleObjective(2, Theta_fun);
-    
-    if (numstates == 6)
-        prog = addCost(prog,IMUerr_cost,{prog.x_inds(4:6, j); prog.x_inds(4:6, j-1)});
-        prog = addCost(prog, Theta_err_cost, {prog.x_inds(3, j); prog.x_inds(3, j-1)});
-    else
-        prog = addCost(prog,IMUerr_cost,{prog.x_inds([7, 9, 10], j); prog.x_inds([7, 9, 10], j-1)});
-        prog = addCost(prog, Theta_err_cost, {prog.x_inds(4, j); prog.x_inds(4, j-1)});
-    end
-end
-
-traj_init.x = xtraj;
-%     if i > 2
+    traj_init.x = xtraj;
+%     if i > 1
 %         traj_init.l = ltraj;
 %     end
-
-prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
-
-tic
-[xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
-toc
-if (info ~= 1 && info ~= 3)
-    [c, ~] = prog.nonlinearConstraints(z);
-    display(prog.cin_name);
-    display('cin_lb');
-    display(prog.cin_lb);
-    display('cin_ub');
-    display(prog.cin_ub);
-    display('c');
-    display(c);
-end
-assert(info == 1);
-
+    prog = addStateConstraint(prog, BoundingBoxConstraint(double(x0min), double(x0max)), 1);
+    
+    tic
+    [xtraj,utraj,ltraj,~,z,F,info] = solveTraj(prog,tf,traj_init);
+    toc
+    assert(info == 1);
+% end
 v = r.constructVisualizer;
 v.display_dt = 0.001;
 traj = xtraj.eval(xtraj.getBreaks());
-poses = zeros(numstates, length(inds));
-if (numstates == 6)
+poses = zeros(r.getNumStates, length(inds));
+if (r.twoD == 1)
     poses(1:3, :) = [traj(1, :)', traj(2, :)', traj(3, :)']';
 else
     poses([1, 2, 3, 4, 5, 6], :) = [traj(1, :)', traj(2, :)', traj(3, :)', traj(4, :)', traj(5, :)', traj(6, :)']';
@@ -163,20 +172,48 @@ xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
 v.playback(xtraj_constructed, struct('slider', true));
 
 %% cost fun!
-    function [f, df] = IMUcost(x, oldx, u)
+    function [f, df] = IMUcost2(x, oldx, meas)
         costmat = [x(1)-oldx(1); x(2)-oldx(2); x(3)];
-        Q = [10/pi, 0, 0; 0, 10/pi, 0; 0, 0, 1]; % Q is a scaling matrix
-        f = (costmat-u)'*Q*(costmat-u);
+        Q = [10/pi, 0, 0;...
+            0, 10/pi, 0;...
+            0, 0, 1]; % Q is a scaling matrix
+        f = (costmat-meas)'*Q*(costmat-meas);
         jaccostmat = [1, 0, 0, -1, 0, 0;...
             0, 1, 0, 0, -1, 0;...
             0, 0, 1, 0, 0, 0];
-        df = 2*(costmat-u)'*Q*jaccostmat;
+        df = 2*(costmat-meas)'*Q*jaccostmat;
     end
 
-    function [f, df] = THETAcost(x, oldx, u)
+    function [f, df] = ANGcost2(x, oldx, meas)
         costmat = [x-oldx];
-        f = (costmat-u)^2;
-        df = 2*(costmat-u)*[1, -1];
+        f = (costmat-meas)^2;
+        df = 2*(costmat-meas)*[1, -1];
     end
 
+    function [f, df] = IMUcost3(x, oldx, meas)
+        costmat = [x(1)-oldx(1); x(2)-oldx(2); x(3)-oldx(3); x(4); x(5); x(6)];
+        Q = [10/pi, 0, 0, 0, 0, 0;...
+            0, 10/pi, 0, 0, 0, 0;...
+            0, 0, 10/pi, 0, 0, 0;...
+            0, 0, 0, 1, 0, 0;...
+            0, 0, 0, 0, 1, 0;...
+            0, 0, 0, 0, 0, 1]; % Q is a scaling matrix
+        f = (costmat-meas)'*Q*(costmat-meas);
+        jaccostmat = [1, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0;...
+            0, 1, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0;...
+            0, 0, 1, 0, 0, 0, 0, 0, -1, 0, 0, 0;...
+            0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0;...
+            0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0;...
+            0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0];
+        df = 2*(costmat-meas)'*Q*jaccostmat;
+    end
+
+    function [f, df] = ANGcost3(x, oldx, meas)
+        costmat = [x(1)-oldx(1); x(2)-oldx(2); x(3)-oldx(3)];
+        f = (costmat - meas)'*(costmat - meas);
+        jaccostmat = [1, 0, 0, -1, 0, 0;...
+            0, 1, 0, 0, -1, 0;...
+            0, 0, 1, 0, 0, -1];
+        df = 2*(costmat-meas)'*jaccostmat;
+    end
 end
