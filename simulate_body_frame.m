@@ -67,10 +67,10 @@ N = numel(sensor_inds);
 times = times(1:numel(times)-1) - times(1);
 times = times';
 
-% xddot = awgn(xddot, 45);
-% zddot = awgn(zddot, 45);
-% noisy_thetadot = awgn(thetadot(sensor_inds), 45);
-noisy_thetadot = thetadot(sensor_inds);
+xddot = awgn(xddot, 40);
+zddot = awgn(zddot, 40);
+noisy_thetadot = awgn(thetadot(sensor_inds), 40);
+% noisy_thetadot = thetadot(sensor_inds);
 
 inds = round(linspace(1, size(times, 1), N));
 
