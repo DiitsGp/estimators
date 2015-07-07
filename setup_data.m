@@ -94,29 +94,16 @@ data = [times, xddot, non_meas, yddot, non_meas, thetadot, non_meas];
 xdot_gt = [xdot(inds), ydot(inds), thetadot(inds)];
 x_gt = [x_filt(inds), y_filt(inds), theta_filt(inds)];
 
-x_calc = zeros(N, 1);
-y_calc = zeros(N, 1);
-theta_calc = zeros(N, 1);
-
 x_err = zeros(N, 1);
 y_err = zeros(N, 1);
 theta_err = zeros(N, 1);
 
 %% plot the final errors
-for i = 1:N
-    t = times(inds(i));
-    xtrajloop = xtraj.eval(t);
-    
-    x_calc(i) = xtrajloop(1);
-    y_calc(i) = xtrajloop(2);
-    theta_calc(i) = xtrajloop(3);
-    xdot_calc(i) = xtrajloop(4);
-    ydot_calc(i) = xtrajloop(5);
-    
-    x_err(i) = (x_gt(i, 1) - x_calc(i))/x_gt(i, 1);
-    y_err(i) = (x_gt(i, 2) - y_calc(i))/x_gt(i, 2);
-    theta_err(i) = (x_gt(i, 3) - theta_calc(i))/x_gt(i, 3);
-end
+traj_ts = xtraj.getBreaks();
+traj_eval = xtraj.eval(traj_ts);
+xdot_calc = traj_eval(4, :);
+zdot_calc = traj_eval(5, :);
+theta_calc = traj_eval(3, :);
 
 % only plot the results of integration here
 figure
