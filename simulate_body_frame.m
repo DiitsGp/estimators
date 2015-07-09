@@ -48,9 +48,10 @@ sensor_inds = round(linspace(1, numel(xtraj_ts.tt), 120*tf));
 sensor_inds = sensor_inds(1:50);
 tempxdot = xdot(sensor_inds);
 tempzdot = zdot(sensor_inds);
-tempdt = dt(sensor_inds)*numel(times)/numel(sensor_inds);
-xddot = diff(tempxdot)./tempdt(1:numel(tempdt)-1);
-zddot = diff(tempzdot)./tempdt(1:numel(tempdt)-1);
+temptimes = times(sensor_inds);
+xddot = diff(tempxdot)./diff(temptimes);
+zddot = diff(tempzdot)./diff(temptimes);
+theta_dot = thetadot(sensor_inds);
 sensor_inds = sensor_inds(1:numel(sensor_inds)-1);
 
 for i = 1:numel(xddot)
@@ -67,10 +68,11 @@ N = numel(sensor_inds);
 times = times(1:numel(times)-1) - times(1);
 times = times';
 
-xddot = awgn(xddot, 40);
-zddot = awgn(zddot, 40);
-noisy_thetadot = awgn(thetadot(sensor_inds), 40);
-% noisy_thetadot = thetadot(sensor_inds);
+% xddot = awgn(xddot, 40);
+% zddot = awgn(zddot, 40);
+% noisy_thetadot = awgn(theta_dot(2:end), 40);
+% x0 = awgn(x0, 25);
+noisy_thetadot = theta_dot(2:end);
 
 inds = round(linspace(1, size(times, 1), N));
 
@@ -94,7 +96,7 @@ traj_sim = PPTrajectory(foh(ts_sim,traj_sim.eval(ts_sim)));
 ts = times(sensor_inds);
 non_meas = zeros(numel(xddot), 1);
 data = [ts, xddot', non_meas, zddot', non_meas, noisy_thetadot', non_meas];
-[r, xtraj, info, prog] = contactBasedStateEstimator(r, N, x0, data, traj_sim);
+[r, xtraj, utraj, ltraj, z, F, info, prog] = contactBasedStateEstimator(r, N, x0, data, traj_sim);
 
 traj_ts = xtraj.getBreaks();
 traj_eval = xtraj.eval(traj_ts);
@@ -103,16 +105,22 @@ zdot_calc = traj_eval(5, :);
 theta_calc = traj_eval(3, :);
 
 % onlz plot the results of integration here
+plot_inds = round(linspace(1, numel(xtraj_ts.tt), 120*tf));
+plot_inds = plot_inds(1:50);
+plotxdot = xdot(plot_inds(2:end));
+plotzdot = zdot(plot_inds(2:end));
+plottheta = theta(plot_inds(2:end));
+
 figure
-plot(times(sensor_inds), xdot(sensor_inds), '+', times(sensor_inds), xdot_calc, '*');
+plot(times(sensor_inds), plotxdot, '+', times(sensor_inds), xdot_calc, '*');
 title('sim-xdot (+) and xdot-calc (*) vs times');
 
 figure
-plot(times(sensor_inds), zdot(sensor_inds), '+', times(sensor_inds), zdot_calc, '*');
+plot(times(sensor_inds), plotzdot, '+', times(sensor_inds), zdot_calc, '*');
 title('sim-zdot (+) and zdot-calc (*) vs times');
 
 figure
-plot(times(sensor_inds), theta(sensor_inds), '+', times(sensor_inds), theta_calc, '*');
+plot(times(sensor_inds), plottheta, '+', times(sensor_inds), theta_calc, '*');
 title('sim-theta (+) and theta-calc (*) vs times');
 
 

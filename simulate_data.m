@@ -42,12 +42,14 @@ yawdot = traj(12, :);
 
 times = linspace(0, tf, length(x));
 dt = diff(times);
-sensor_inds = round(linspace(1, numel(xdot)-1, round(120*tf))-1)+1;
+sensor_inds = round(linspace(1, numel(xtraj_ts.tt), 120*tf));
+sensor_inds = sensor_inds(1:50);
 tempxdot = xdot(sensor_inds);
 tempzdot = zdot(sensor_inds);
-tempdt = dt(sensor_inds)*numel(times)/numel(sensor_inds);
-xddot = diff(tempxdot)./tempdt(1:numel(tempdt)-1);
-zddot = diff(tempzdot)./tempdt(1:numel(tempdt)-1);
+temptimes = times(sensor_inds);
+xddot = diff(tempxdot)./diff(temptimes);
+zddot = diff(tempzdot)./diff(temptimes);
+theta_dot = thetadot(sensor_inds);
 sensor_inds = sensor_inds(1:numel(sensor_inds)-1);
 
 N = round(numel(sensor_inds)/10);
@@ -57,7 +59,7 @@ times = times';
 
 xddot = awgn(xddot, 45);
 zddot = awgn(zddot, 45);
-noisy_thetadot = awgn(rolldot(sensor_inds), 45);
+noisy_thetadot = awgn(theta_dot(2:end), 40);
 % noisy_thetadot = rolldot(sensor_inds);
 
 inds = round(linspace(1, size(times, 1), N));
@@ -93,16 +95,22 @@ zdot_calc = traj_eval(9, :);
 theta_calc = traj_eval(4, :);
 
 % onlz plot the results of integration here
+plot_inds = round(linspace(1, numel(xtraj_ts.tt), 120*tf));
+plot_inds = plot_inds(1:50);
+plotxdot = xdot(plot_inds(2:end));
+plotzdot = zdot(plot_inds(2:end));
+plottheta = theta(plot_inds(2:end));
+
 figure
-plot(times(inds), xdot(inds), '+', times(inds), xdot_calc, '*');
+plot(times(sensor_inds), plotxdot, '+', times(sensor_inds), xdot_calc, '*');
 title('sim-xdot (+) and xdot-calc (*) vs times');
 
 figure
-plot(times(inds), zdot(inds), '+', times(inds), zdot_calc, '*');
+plot(times(sensor_inds), plotzdot, '+', times(sensor_inds), zdot_calc, '*');
 title('sim-zdot (+) and zdot-calc (*) vs times');
 
 figure
-plot(times(inds), roll(inds), '+', times(inds), theta_calc, '*');
+plot(times(sensor_inds), plottheta, '+', times(sensor_inds), theta_calc, '*');
 title('sim-theta (+) and theta-calc (*) vs times');
 
 
