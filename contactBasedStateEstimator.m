@@ -164,7 +164,7 @@ for i = 1:numel(scale_sequence)
     toc
     
     display(info);
-    keyboard;
+%     keyboard;
 end
 
 v = r.constructVisualizer;
