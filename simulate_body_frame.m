@@ -14,10 +14,11 @@ p = PlanarRigidBodyManipulator(urdf, options);
 p = p.setGravity([0; 0; G]);
 r = TimeSteppingRigidBodyManipulator(p, options.dt, options);
 
-tf = 1;
-x0 = [0; 0.12; pi/3; 0; 0; 0];
+tf = 10;
+x0 = [0; 1; pi/3; 0.5; 0; 0];
 % x0 = [0; 0; 1; pi/6; 0; 0; 0; 0; 0; 0; 0; 0];
 
+p = p.compile();
 xtraj_ts = simulate(r, [0 tf], x0);
 
 v = r.constructVisualizer;
@@ -82,7 +83,8 @@ noisy_thetadot = theta_dot(2:end);
 inds = round(linspace(1, size(times, 1), N));
 
 v = r.constructVisualizer;
-v.display_dt = 0.01;
+v.preserve_view = true;
+v.display_dt = 0.001;
 poses = zeros(r.getNumStates(), numel(x));
 poses([1, 2, 3], :) = [x; z; theta];
 % poses([1, 3, 4], :) = [x; z; roll];
@@ -91,7 +93,7 @@ xtraj_constructed = DTTrajectory(dttimes, poses);
 xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
 % v = v.enableLCMGLInertiaEllipsoids();
 % v.draw(0, x0);
-v.playback(xtraj_constructed, struct('slider', true));
+v.playback(xtraj_constructed, struct('slider', true, 'preserve_view', true));
 
 % figure
 % plot(times(inds), theta(inds), '*');
