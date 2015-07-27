@@ -24,5 +24,5 @@ p = p.compile();
 
 xtraj_elastic = PPTrajectory(foh(times, states));
 v = r.constructVisualizer();
-xtraj_elastic = xtraj_elastic.setOutputFrame(v.getInputFrame);
+xtraj_elastic = xtraj_elastic.setOutputFrame(r.getStateFrame);
 v.playback(xtraj_elastic, struct('slider', true))
