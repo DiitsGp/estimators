@@ -178,7 +178,7 @@ else
 end
 dttimes = linspace(times(1), times(end), length(times(inds)));
 xtraj_constructed = DTTrajectory(dttimes, poses);
-xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
+xtraj_constructed = xtraj_constructed.setOutputFrame(r.getStateFrame);
 v.playback(xtraj_constructed, struct('slider', true));
 
 % for i = 1:N

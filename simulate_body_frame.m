@@ -15,7 +15,7 @@ p = p.setGravity([0; 0; G]);
 r = TimeSteppingRigidBodyManipulator(p, options.dt, options);
 
 tf = 10;
-x0 = [0; 1; pi/3; 0.5; 0; 0];
+x0 = [0; 0.12; pi/3; 0; 0; 0];
 % x0 = [0; 0; 1; pi/6; 0; 0; 0; 0; 0; 0; 0; 0];
 
 p = p.compile();
@@ -90,7 +90,7 @@ poses([1, 2, 3], :) = [x; z; theta];
 % poses([1, 3, 4], :) = [x; z; roll];
 dttimes = linspace(times(1), times(end), numel(x));
 xtraj_constructed = DTTrajectory(dttimes, poses);
-xtraj_constructed = xtraj_constructed.setOutputFrame(v.getInputFrame);
+xtraj_constructed = xtraj_constructed.setOutputFrame(r.getStateFrame);
 % v = v.enableLCMGLInertiaEllipsoids();
 % v.draw(0, x0);
 v.playback(xtraj_constructed, struct('slider', true, 'preserve_view', true));
