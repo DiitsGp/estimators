@@ -13,32 +13,9 @@ q = x0(1:3);
 v = x0(4:6);
 vlast = 0;
 eps = 0; % coefficient of restitution
+
 while(t < tf)
-    %     if (t > 0.5092)
-    %         keyboard;
-    %     end
     [M, C] = r.manipulatorDynamics(q, v, 0);
-    %
-    %     qnew = q + h*v;
-    %     kinsol = r.doKinematics(qnew);
-    %     [phi, ~, ~, ~, ~, ~, ~, mu, n, D] = r.contactConstraints(kinsol, false);
-    %
-    %     xd = r.dynamics(0, [q;v], 0);
-    %     vnew = v + h*xd(4:6);
-    %     %z = anitescuLCP(M, v, -h*C, mu, n, D, ); % to find vnew
-    %     %vnew = z(1:3)
-    %
-    %     if ((~ any(phi < phi_tol)) | (v == 0))
-    %         q = qnew;
-    %         vlast = v;
-    %         v = vnew;
-    % %         disp('no');
-    %         t = t+h;
-    %         states = [states, [q; v]];
-    %         times = [times, t];
-    %     else
-    %         contact_inds = find(phi < phi_tol);
-    
     kinsol = r.doKinematics(q, v);
     [phi, ~, ~, ~, ~, ~, ~, mu, n, D] = r.contactConstraints(kinsol, false);
     
@@ -61,12 +38,11 @@ while(t < tf)
     vlast = v;
     v = z(1:3);
     q = q + h*v;
-    t = t+h
+    t = t+h;
     
     states = [states, [q; v]];
     times = [times, t];
 end
-% end
 
 xtraj_elastic = PPTrajectory(foh(times, states));
 vv = r.constructVisualizer();
