@@ -16,7 +16,7 @@ p = p.setGravity([0; 0; G]);
 r = TimeSteppingRigidBodyManipulator(p, options.dt, options);
 
 tf = 2;
-x0 = [0; 1; pi/4; 0; 0; 0];
+x0 = [0; 1; pi/4; 0.5; 0; 0];
 
 p = p.compile();
 

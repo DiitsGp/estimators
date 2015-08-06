@@ -1,44 +1,47 @@
 function [states, times] = elasticLCP(r, x0, tf)
-% Solves an elastic LCP as described in Anitescu and Potra 1997
-
-% Re-written to use the forumation in Anitescu 2003, "A Fixed Time-Step
-% Approach for Multibody Dynamics with Contact and Friction"
+% Solves an elastic LCP as described below:
+% 
+% v_{k+1} = v_{k} + H^-1*(B_{k}*u-C_{k} + J_{k}'*(lambda_c + lambda_d))
+% [[lambda_d = e*lambda_c where e is restitution coefficient]]
+% v_{c} = v_{k} + H^-1*(B_{k}*u-C_{k}+J_{k}'*lambda_c)
+% 0 <= lambda_c \perp phi_{k} + h*J_{k}*v_{c} >= 0
+% 
 
 states = x0;
 times = 0;
-phi_tol = 1e-6;
+phi_tol = 1e-3;
 h = 0.001;
 t = 0;
 q = x0(1:3);
 v = x0(4:6);
-vlast = 0;
-eps = 0; % coefficient of restitution
+vlast = [0; 0; 0];
+eps = 1; % coefficient of restitution
 
 while(t < tf)
-    [M, C] = r.manipulatorDynamics(q, v, 0);
     kinsol = r.doKinematics(q, v);
+    [phi, ~, ~, ~, ~, ~, ~, ~, n, ~] = r.contactConstraints(kinsol, false);
+    
+    contact_inds = find(phi + h*n*v < phi_tol);
+    
+    [H, C] = r.manipulatorDynamics(q, v, 0);
+    kinsol = r.doKinematics(q+h*v, v);
     [phi, ~, ~, ~, ~, ~, ~, mu, n, D] = r.contactConstraints(kinsol, false);
-    
-    contact_inds = find(phi < phi_tol);
     D = vertcat(D{:});
-    % Anitescu says it should be Delta = 1/h*phi(contact_inds); but for
-    % some reason this induces an energy gain
-    Delta = zeros(numel(contact_inds), 1); 
-    vn = n(contact_inds, :)*vlast;
-    if (isempty(vn))
-        Lambda = [];
-    else
-        Lambda = eps*vn.*ones(numel(contact_inds), 1);
-    end
+    impulse = -h*C; % -Hv - h*(B*u-C) --> presently no input
+    nC = numel(contact_inds);
     
-    impulse = -h*C; % h*(B*u-C) --> presently no input
-    z = anitescuLCP(M, v, impulse, Delta, Lambda, mu(contact_inds),...
-        n(contact_inds, :), D([contact_inds, contact_inds+4], :), numel(contact_inds));
+    z = elasticLCP(H, v, impulse, mu(contact_inds),...
+        n(contact_inds, :), D([contact_inds, contact_inds+4], :), nC, eps);
 
-    vlast = v;
     v = z(1:3);
-    q = q + h*v;
-    t = t+h;
+%     if (nC > 0)
+%         zz = elasticLCP(H, v, IMPULSE???, Delta, Lambda, mu(contact_inds),...
+%         n(contact_inds, :), D([contact_inds, contact_inds+4], :), nC);
+%         
+%         q = q + h*v;
+%     end
+q = q+h*v;
+    t = t+h
     
     states = [states, [q; v]];
     times = [times, t];
@@ -50,37 +53,42 @@ xtraj_elastic = xtraj_elastic.setOutputFrame(r.getStateFrame);
 vv.playback(xtraj_elastic, struct('slider', true));
 
 keyboard;
-end
 
-
-function [z] = anitescuLCP(M, v, impulse, Delta, Lambda, mu, n, D, nC)
+ 
+function [z] = elasticLCP(H, v, impulse, mu, n, D, nC, eps)
 if (nC > 0) % to avoid path complaining about empty matrices in the falling case
     display('Collision!');
-    mcpmat = [M, -n', -D', zeros(3, nC);...
+    mcpmat = [H, -n', -D', zeros(3, nC);...
         n, zeros(nC, 4*nC);
         D, zeros(2*nC, 3*nC), [eye(nC); eye(nC)];...
         zeros(nC, 3), diag(mu), -eye(nC), -eye(nC), zeros(nC, nC)];
-    mcpvec = [-M*v-impulse; Delta+Lambda; zeros(3*nC, 1)];
+    mcpvec = [-H*v-impulse; 2*eps*n*v; zeros(3*nC, 1)];
     
-    M = mcpmat(1:3, 1:3);
-    H = -mcpmat(1:3, 4:end);
+    H = mcpmat(1:3, 1:3);
+    G = -mcpmat(1:3, 4:end);
     N = mcpmat(4:end, 4:end);
     
     b = mcpvec(1:3);
     w = mcpvec(4:end);
     
-    lcpmat = H'*(M\H) + N;
-    lcpvec = w-H'*(M\b);
+    lcpmat = G'*(H\G) + N;
+    lcpvec = w-G'*(H\b);
     
     z = pathlcp(lcpmat, lcpvec, zeros(numel(lcpvec),1), inf(numel(lcpvec),1));
     
-    x = M\(H*z - b);
-    z = [x; z];
+%     if (any(z(1:nC) > 0))
+%         keyboard;
+%     end
+    G_rest = [-(1+eps)*n', -D', zeros(3, nC)];
+    v = (1+eps)*H\(G*z - b);
+    z = [v; z];
+
 else
-    lcpmat = M;
-    lcpvec = -M*v-impulse;
+    lcpmat = H;
+    lcpvec = -H*v-impulse;
     
     z = pathlcp(lcpmat, lcpvec, -inf(numel(lcpvec), 1), inf(numel(lcpvec), 1));
+end
 end
 
 end
