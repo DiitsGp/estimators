@@ -24,7 +24,6 @@ inds = round(linspace(1, size(times, 1), N));
 %% bounds
 x0min = Point(r.getStateFrame());
 x0max = Point(r.getStateFrame());
-epsi = 0.25;
 
 if (r.twoD == 1)
     display(['Initializing 2-d trajectory optimization problem with ', num2str(N), ' knot points.']);
@@ -78,6 +77,7 @@ for i = 1:numel(scale_sequence)
     
     options.compl_slack = scale * 0.01;
     options.lincompl_slack = scale * 0.001;
+    options.restitution = 0;
     prog = ContactImplicitTrajectoryOptimization(r.getManipulator,N,tf,options);
     prog = prog.setSolverOptions('snopt', 'superbasicslimit', 1000);
     prog = prog.setSolverOptions('snopt','MajorIterationsLimit',750);
@@ -95,15 +95,25 @@ for i = 1:numel(scale_sequence)
     ts = ts(xtrajinds);
     traj = xtraj.eval(ts);
     
-    for kp = 2:N
+    minkp = find(inds >= 2, 1);
+    for kp = minkp:N
         display(['Added cost function for knot point: ', num2str(kp)]);
         if (r.twoD == 1)
-            measIMU = [0; 0; 0];
-            measANG = [0];
-            dt = times(kp) - times(kp-1);
-            measIMU(1) = measIMU(1) + dt*xddot(kp);
-            measIMU(2) = measIMU(2) + dt*zddot(kp);
-            measANG = measANG + dt*pitchdot(kp);
+            % We will integrate costs here so that we can look at longer
+            % trajectories
+            if kp == 1
+                minind = 2;
+            else
+                minind = inds(kp-1) + 1;
+            end
+            for num = minind:inds(kp)
+                measIMU = [0; 0; 0];
+                measANG = [0];
+                dt = times(num) - times(num-1);
+                measIMU(1) = measIMU(1) + dt*xddot(num);
+                measIMU(2) = measIMU(2) + dt*zddot(num);
+                measANG = measANG + dt*pitchdot(num);
+            end
             measIMU(3) = pitchdot(kp);
             
             %         IMU_fun = @(x, oldx) IMUcost2w(x, oldx, measIMU);
@@ -121,7 +131,7 @@ for i = 1:numel(scale_sequence)
             Angular_err_cost = FunctionHandleObjective(2, Angular_fun);
             
 %             prog = addCost(prog, PROCerr_cost, {prog.x_inds(:, kp)});
-%             prog = addCost(prog, x0_cost, {prog.x_inds(:, 1)});
+            prog = addCost(prog, x0_cost, {prog.x_inds(:, 1)});
             prog = addCost(prog, IMUerr_cost,{prog.x_inds([4:6, 3], kp); prog.x_inds([4:6, 3], kp-1)});
             prog = addCost(prog, Angular_err_cost, {prog.x_inds(3, kp); prog.x_inds(3, kp-1)});
         else
